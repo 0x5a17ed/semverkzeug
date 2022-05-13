@@ -20,7 +20,7 @@ Semverkzeug aims to be a **simple** tool for automatically handling [Semantic Ve
 ## 📦 Installation
 
 ```console
-foo@bar:~ $ go install github.com/0x5a17ed/semverkzeug@latest
+foo@bar:~ $ go install github.com/0x5a17ed/semverkzeug/cmd/semverkzeug@latest
 ```
 
 

@@ -30,6 +30,7 @@ import (
 )
 
 var (
+	noPrefix       bool
 	withCommitHash bool
 )
 
@@ -49,7 +50,11 @@ func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, err = fmt.Println(vs.String())
+	if noPrefix {
+		_, err = fmt.Println(vs.Version.String())
+	} else {
+		_, err = fmt.Println(vs.String())
+	}
 	return err
 }
 
@@ -64,6 +69,7 @@ current state of the repository.`,
 
 	fl := c.Flags()
 	fl.BoolVar(&withCommitHash, "add-commit-hash", false, "add commit hash as metadata")
+	fl.BoolVar(&noPrefix, "no-prefix", false, "print the version without prefix")
 
 	return c
 }

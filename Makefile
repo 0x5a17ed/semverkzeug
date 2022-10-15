@@ -1,10 +1,12 @@
+VERSION := $(shell go run ./cmd/semverkzeug describe --no-prefix)
+
 BINARY_NAME := semverkzeug
 
 SHELL := bash
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
 
-GOFLAGS := -trimpath -ldflags "-w -s"
+GOFLAGS := -trimpath -ldflags "-w -s -X=github.com/0x5a17ed/semverkzeug/pkg/version.Version=$(VERSION)"
 
 SRC := $(shell find . -type f \( -name '*.go' \) )
 

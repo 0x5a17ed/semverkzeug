@@ -26,6 +26,7 @@ import (
 	"github.com/0x5a17ed/semverkzeug/pkg/cli"
 	clibump "github.com/0x5a17ed/semverkzeug/pkg/cli/bump"
 	clidescribe "github.com/0x5a17ed/semverkzeug/pkg/cli/describe"
+	"github.com/0x5a17ed/semverkzeug/pkg/version"
 )
 
 var (
@@ -54,8 +55,9 @@ func persistentPreRunE(cmd *cobra.Command, args []string) (err error) {
 
 func GetCommand() *cobra.Command {
 	c := &cobra.Command{
-		Use:   "semverkzeug",
-		Short: "versioning tool for git repositories",
+		Use:     "semverkzeug",
+		Short:   "versioning tool for git repositories",
+		Version: version.Version,
 
 		PersistentPreRunE: persistentPreRunE,
 	}

@@ -14,7 +14,7 @@
  * language governing permissions and limitations under the License.
  */
 
-package describe
+package describecmd
 
 import (
 	"context"
@@ -58,7 +58,7 @@ func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
 	return err
 }
 
-func GetCommand() *cobra.Command {
+func Command() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "describe",
 		Short: "Print current version string",
@@ -75,7 +75,7 @@ current state of the repository.`,
 }
 
 func Execute(ctx context.Context, args []string) error {
-	c := GetCommand()
+	c := Command()
 	c.SetArgs(args)
 	return c.ExecuteContext(ctx)
 }

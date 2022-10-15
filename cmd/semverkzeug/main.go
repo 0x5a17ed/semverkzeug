@@ -20,11 +20,11 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/cli/root"
+	"github.com/0x5a17ed/semverkzeug/pkg/cli/rootcmd"
 )
 
 func main() {
-	if err := root.Execute(os.Args[1:]); err != nil {
+	if err := rootcmd.Execute(os.Args[1:]); err != nil {
 		fmt.Printf("error: %s\n", err.Error())
 		os.Exit(1)
 	}

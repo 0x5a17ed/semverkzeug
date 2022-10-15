@@ -14,7 +14,7 @@
  * language governing permissions and limitations under the License.
  */
 
-package root
+package rootcmd
 
 import (
 	"errors"
@@ -24,8 +24,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/0x5a17ed/semverkzeug/pkg/cli"
-	clibump "github.com/0x5a17ed/semverkzeug/pkg/cli/bump"
-	clidescribe "github.com/0x5a17ed/semverkzeug/pkg/cli/describe"
+	"github.com/0x5a17ed/semverkzeug/pkg/cli/bumpcmd"
+	"github.com/0x5a17ed/semverkzeug/pkg/cli/describecmd"
 	"github.com/0x5a17ed/semverkzeug/pkg/version"
 )
 
@@ -53,7 +53,7 @@ func persistentPreRunE(cmd *cobra.Command, args []string) (err error) {
 	return
 }
 
-func GetCommand() *cobra.Command {
+func Command() *cobra.Command {
 	c := &cobra.Command{
 		Use:     "semverkzeug",
 		Short:   "versioning tool for git repositories",
@@ -65,14 +65,14 @@ func GetCommand() *cobra.Command {
 	pfs := c.PersistentFlags()
 	pfs.StringVarP(&repoPath, "repo", "r", "", "git repository path (default is $PWD)")
 
-	c.AddCommand(clidescribe.GetCommand())
-	c.AddCommand(clibump.GetCommand())
+	c.AddCommand(describecmd.Command())
+	c.AddCommand(bumpcmd.Command())
 
 	return c
 }
 
 func Execute(args []string) error {
-	c := GetCommand()
+	c := Command()
 	c.SetArgs(args)
 	return c.Execute()
 }

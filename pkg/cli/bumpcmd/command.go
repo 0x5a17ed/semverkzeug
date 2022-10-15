@@ -14,7 +14,7 @@
  * language governing permissions and limitations under the License.
  */
 
-package describe
+package bumpcmd
 
 import (
 	"context"
@@ -65,13 +65,13 @@ func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func GetCommand() *cobra.Command {
+func Command() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "bump [major|minor|patch]",
 		Short: "Bumps the current version and creates a new tag",
 		Long: `Prints a version string describing the 
 currently checked out revision.`,
-		Args:      cobra.ExactValidArgs(1),
+		Args:      cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
 		ValidArgs: partKeys,
 		Run:       cli.RunCatchErr(runE),
 	}

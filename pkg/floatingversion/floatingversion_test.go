@@ -14,7 +14,7 @@
  * language governing permissions and limitations under the License.
  */
 
-package floatingversion
+package floatingversion_test
 
 import (
 	"errors"
@@ -30,6 +30,8 @@ import (
 	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/0x5a17ed/semverkzeug/pkg/floatingversion"
 )
 
 var signature = &object.Signature{
@@ -74,6 +76,24 @@ func oneCommitFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
 	require.NoError(t, err)
 
 	_, err = wt.Commit("asd", &git.CommitOptions{Author: signature, Committer: signature})
+	require.NoError(t, err)
+
+	return fs, repo
+}
+
+func oneCommitFileDeletedFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
+	fs, repo := emptyDirtyFixture(t)
+
+	wt, err := repo.Worktree()
+	require.NoError(t, err)
+
+	err = wt.AddWithOptions(&git.AddOptions{Path: "foo"})
+	require.NoError(t, err)
+
+	_, err = wt.Commit("asd", &git.CommitOptions{Author: signature, Committer: signature})
+	require.NoError(t, err)
+
+	err = fs.Remove("/foo")
 	require.NoError(t, err)
 
 	return fs, repo
@@ -145,6 +165,7 @@ func TestGetVersion(t *testing.T) {
 		{"empty-dirty", emptyDirtyFixture, `v0\.0\.1-dev\.0\.\d{14}`, assert.NoError},
 		{"one-commit-no-tag", oneCommitFixture, `v0\.0\.1-dev\.1`, assert.NoError},
 		{"one-commit-no-tag-dirty", oneCommitDirtyFixture, `v0\.0\.1-dev\.1\.\d{14}`, assert.NoError},
+		{"one-commit-no-tag-deleted-file", oneCommitFileDeletedFixture, `v0\.0\.1-dev\.1\.\d{14}`, assert.NoError},
 		{"one-tag", oneTaggedCommitRepositoryFixture, `v0\.1\.0`, assert.NoError},
 		{"one-tag-dirty", oneTaggedDirtyFixture, `v0\.1\.1-dev\.0\.\d{14}`, assert.NoError},
 		{"one-tag-one-commit", oneTagOneCommitFixture, `v0\.1\.1-dev\.1`, assert.NoError},
@@ -159,7 +180,7 @@ func TestGetVersion(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			gotVs, err := Get(repo, head, false)
+			gotVs, err := floatingversion.Get(repo, head, false)
 			if !tt.wantErr(t, err, fmt.Sprintf("Get(%v)", tt.repo)) {
 				return
 			}

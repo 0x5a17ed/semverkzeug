@@ -18,8 +18,11 @@ package gitversions
 
 import (
 	"errors"
+	"io/fs"
+	"path/filepath"
 	"time"
 
+	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-git/v5"
 )
 
@@ -27,20 +30,34 @@ var (
 	ErrNotDirty = errors.New("repository is clean")
 )
 
+func findModTime(vfs billy.Filesystem, fp string) (time.Time, error) {
+	for {
+		fi, err := vfs.Lstat(fp)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) && fp != "." {
+				// File was probably deleted. Try parent directory.
+				fp = filepath.Dir(fp)
+				continue
+			}
+			return time.Time{}, err
+		}
+		return fi.ModTime().UTC(), nil
+	}
+}
+
 func LastModificationTime(wt *git.Worktree, st git.Status) (*time.Time, error) {
 	var latestChange time.Time
 
-	for fp, fs := range st {
-		if fs.Worktree == git.Unmodified && fs.Staging == git.Unmodified {
+	for fp, fst := range st {
+		if fst.Worktree == git.Unmodified && fst.Staging == git.Unmodified {
 			continue
 		}
 
-		if fi, err := wt.Filesystem.Lstat(fp); err == nil {
-			if mtime := fi.ModTime(); mtime.After(latestChange) {
-				latestChange = mtime.UTC()
-			}
-		} else {
+		switch mtime, err := findModTime(wt.Filesystem, fp); {
+		case err != nil:
 			return nil, err
+		case mtime.After(latestChange):
+			latestChange = mtime
 		}
 	}
 

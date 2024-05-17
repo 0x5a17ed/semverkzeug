@@ -19,13 +19,17 @@ package bump
 import (
 	"errors"
 	"fmt"
-
-	"github.com/Masterminds/semver"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
+	"io"
+	"os"
+	"os/exec"
+	"slices"
 
 	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 	"github.com/0x5a17ed/semverkzeug/pkg/gitversions"
+	"github.com/Masterminds/semver"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
 type Part int
@@ -97,5 +101,41 @@ func It(repo *git.Repository, ref *plumbing.Reference, part Part) (*plumbing.Ref
 		message = fmt.Sprintf("bump version %s → %s", oldVs.String(), newVs.String())
 	}
 
-	return repo.CreateTag(newVs.String(), ref.Hash(), &git.CreateTagOptions{Message: message})
+	if s, ok := repo.Storer.(*filesystem.Storage); ok {
+		wt, err := repo.Worktree()
+		if err != nil {
+			return nil, err
+		}
+
+		cmd := exec.Command("git", "tag", "-a", "-F", "-", newVs.String(), ref.Hash().String())
+		cmd.Env = append(
+			slices.Clone(os.Environ()),
+			fmt.Sprintf("GIT_DIR=%s", s.Filesystem().Root()),
+			fmt.Sprintf("GIT_WORK_TREE=%s", wt.Filesystem.Root()),
+		)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		stdin, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = stdin.Close() }()
+
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+
+		_, _ = io.WriteString(stdin, message)
+		_ = stdin.Close()
+
+		if err := cmd.Wait(); err != nil {
+			return nil, err
+		}
+
+		return repo.Tag(newVs.String())
+
+	} else {
+		return repo.CreateTag(newVs.String(), ref.Hash(), &git.CreateTagOptions{Message: message})
+	}
 }

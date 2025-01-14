@@ -26,6 +26,7 @@ import (
 	"github.com/0x5a17ed/semverkzeug/pkg/cli"
 	"github.com/0x5a17ed/semverkzeug/pkg/cli/bumpcmd"
 	"github.com/0x5a17ed/semverkzeug/pkg/cli/describecmd"
+	"github.com/0x5a17ed/semverkzeug/pkg/cli/versioncmd"
 	"github.com/0x5a17ed/semverkzeug/pkg/version"
 )
 
@@ -55,11 +56,17 @@ func persistentPreRunE(cmd *cobra.Command, args []string) (err error) {
 
 func Command() *cobra.Command {
 	c := &cobra.Command{
-		Use:     "semverkzeug",
-		Short:   "versioning tool for git repositories",
-		Version: version.Version,
+		Use:   "semverkzeug",
+		Short: "versioning tool for git repositories",
 
 		PersistentPreRunE: persistentPreRunE,
+	}
+
+	if v, err := version.GetVersion(); err == nil {
+		c.Flags().Bool("version", false, "version for this command")
+		_ = c.Flags().MarkHidden("version")
+
+		c.Version = v
 	}
 
 	pfs := c.PersistentFlags()
@@ -67,6 +74,7 @@ func Command() *cobra.Command {
 
 	c.AddCommand(describecmd.Command())
 	c.AddCommand(bumpcmd.Command())
+	c.AddCommand(versioncmd.Command())
 
 	return c
 }

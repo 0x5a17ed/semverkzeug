@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2022 individual contributors
+ * Copyright(C) 2025 individual contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,25 +14,35 @@
  * language governing permissions and limitations under the License.
  */
 
-package version
+package versioncmd
 
 import (
+	"context"
 	"fmt"
-	"runtime/debug"
-	"slices"
+
+	"github.com/spf13/cobra"
+
+	"github.com/0x5a17ed/semverkzeug/pkg/cli"
+	"github.com/0x5a17ed/semverkzeug/pkg/version"
 )
 
-var Version = ""
-
-func GetVersion() (string, error) {
-	bi, ok := debug.ReadBuildInfo()
-	if ok && !slices.Contains([]string{"", "(devel)"}, bi.Main.Version) {
-		return bi.Main.Version, nil
+func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
+	v, err := version.GetVersion()
+	if err != nil {
+		return err
 	}
 
-	if Version != "" {
-		return Version, nil
+	fmt.Println(v)
+
+	return nil
+}
+
+func Command() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "version",
+		Short: "Print current version of the program itself",
+		Run:   cli.RunCatchErr(runE),
 	}
 
-	return "", fmt.Errorf("no version was baked into the command")
+	return c
 }

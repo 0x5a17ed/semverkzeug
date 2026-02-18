@@ -24,12 +24,13 @@ import (
 	"os/exec"
 	"slices"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
-	"github.com/0x5a17ed/semverkzeug/pkg/gitversions"
-	"github.com/Masterminds/semver"
+	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/storage/filesystem"
+
+	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/pkg/gitversions"
 )
 
 type Part int

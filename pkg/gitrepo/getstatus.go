@@ -17,22 +17,32 @@
 package gitrepo
 
 import (
+	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 )
 
 // GetStatus returns the working tree with its status with external
-// excludes patterns loaded from the `exlcudesfile` setting found in
-// the global git configuration file.
+// exclude patterns loaded from the system and global git
+// configuration files, mimicking native git behavior.
 func GetStatus(r *git.Repository) (wt *git.Worktree, st git.Status, err error) {
 	if wt, err = r.Worktree(); err != nil {
 		return
 	}
 
-	ignorePatterns, err := loadGlobalExcludePatterns()
+	rootFS := osfs.New("/")
+
+	systemPatterns, err := gitignore.LoadSystemPatterns(rootFS)
 	if err != nil {
 		return
 	}
-	wt.Excludes = append(wt.Excludes, ignorePatterns...)
+	wt.Excludes = append(wt.Excludes, systemPatterns...)
+
+	globalPatterns, err := gitignore.LoadGlobalPatterns(rootFS)
+	if err != nil {
+		return
+	}
+	wt.Excludes = append(wt.Excludes, globalPatterns...)
 
 	st, err = wt.Status()
 	return

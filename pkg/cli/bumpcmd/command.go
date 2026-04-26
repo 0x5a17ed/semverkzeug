@@ -19,7 +19,6 @@ package bumpcmd
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -56,12 +55,9 @@ func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
 	}
 
 	scope, _ := cli.GetScope(ctx)
-	newTag, err := bumper.CreateTag(repo, head, partMap[args[0]], scope)
-	if err != nil {
+	if _, err := bumper.CreateTag(repo, head, partMap[args[0]], scope); err != nil {
 		return err
 	}
-
-	fmt.Printf("created new tag: %s\n", newTag.Name().Short())
 
 	return nil
 }

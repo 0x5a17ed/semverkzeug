@@ -23,6 +23,8 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
@@ -30,6 +32,7 @@ import (
 	"github.com/go-git/go-git/v5/storage/filesystem"
 
 	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/pkg/uiprint"
 )
 
 type Part int
@@ -106,13 +109,29 @@ func CreateTag(
 		message = fmt.Sprintf("bump version %s -> %s", oldVersion.String(), newVersion.String())
 	}
 
+	uiprint.Step("Creating annotated tag %s", newVersion.String())
+
+	target := ref.Hash().String()[:8]
+	if commit, cErr := repo.CommitObject(ref.Hash()); cErr == nil {
+		subject, _, _ := strings.Cut(commit.Message, "\n")
+		if subject = strings.TrimSpace(subject); subject != "" {
+			target = fmt.Sprintf("%s (%s)", target, subject)
+		}
+	}
+	uiprint.Substep("Target: %s", target)
+
 	// Check if the repository is backed by a filesystem storage.
 	s, ok := repo.Storer.(*filesystem.Storage)
 	if !ok || s == nil || s.Filesystem() == nil {
 		// Fall back to tag creation via internal implementation.
-		return repo.CreateTag(newVersion.String(), ref.Hash(), &git.CreateTagOptions{
+		tagRef, err := repo.CreateTag(newVersion.String(), ref.Hash(), &git.CreateTagOptions{
 			Message: message,
 		})
+		if err != nil {
+			return nil, err
+		}
+		uiprint.Step("Created tag %s", tagRef.Name().Short())
+		return tagRef, nil
 	}
 
 	wt, err := repo.Worktree()
@@ -121,7 +140,11 @@ func CreateTag(
 	}
 
 	// Use the native git implementation to ensure consistency with other git commands.
-	cmd := exec.Command("git", "tag", "-a", "-F", "-", newVersion.String(), ref.Hash().String())
+	gitArgs := []string{"tag", "-a", "-F", "-", newVersion.String(), ref.Hash().String()}
+
+	uiprint.Substep("Running: git %s", strings.Join(gitArgs, " "))
+
+	cmd := exec.Command("git", gitArgs...)
 	cmd.Env = append(
 		slices.Clone(os.Environ()),
 		fmt.Sprintf("GIT_DIR=%s", s.Filesystem().Root()),
@@ -146,10 +169,25 @@ func CreateTag(
 	_, _ = io.WriteString(stdin, message)
 	_ = stdin.Close()
 
+	// If git takes more than a moment, surface a hint that it's
+	// likely waiting on a hardware key or GPG passphrase.  Most of
+	// the time the timer is cancelled before it fires.
+	hintTimer := time.AfterFunc(2*time.Second, func() {
+		uiprint.Hint("git may pause here waiting for GPG signing (touch your security key if prompted)")
+	})
+	defer hintTimer.Stop()
+
 	// Wait for the command to finish.
 	if err := cmd.Wait(); err != nil {
 		return nil, err
 	}
 
-	return repo.Tag(newVersion.String())
+	tagRef, err := repo.Tag(newVersion.String())
+	if err != nil {
+		return nil, err
+	}
+
+	uiprint.Step("Created tag %s", tagRef.Name().Short())
+
+	return tagRef, nil
 }

@@ -32,6 +32,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/0x5a17ed/semverkzeug/pkg/floatingversion"
+	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 )
 
 var signature = &object.Signature{
@@ -162,14 +163,14 @@ func TestGetVersion(t *testing.T) {
 		wantErr assert.ErrorAssertionFunc
 	}{
 		{"empty", emptyFixture, `v0\.0\.1-dev\.0`, assert.NoError},
-		{"empty-dirty", emptyDirtyFixture, `v0\.0\.1-dev\.0\.\d{14}`, assert.NoError},
-		{"one-commit-no-tag", oneCommitFixture, `v0\.0\.1-dev\.1`, assert.NoError},
-		{"one-commit-no-tag-dirty", oneCommitDirtyFixture, `v0\.0\.1-dev\.1\.\d{14}`, assert.NoError},
-		{"one-commit-no-tag-deleted-file", oneCommitFileDeletedFixture, `v0\.0\.1-dev\.1\.\d{14}`, assert.NoError},
+		{"empty-dirty", emptyDirtyFixture, `v0\.0\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
+		{"one-commit-no-tag", oneCommitFixture, `v0\.0\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
+		{"one-commit-no-tag-dirty", oneCommitDirtyFixture, `v0\.0\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
+		{"one-commit-no-tag-deleted-file", oneCommitFileDeletedFixture, `v0\.0\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
 		{"one-tag", oneTaggedCommitRepositoryFixture, `v0\.1\.0`, assert.NoError},
-		{"one-tag-dirty", oneTaggedDirtyFixture, `v0\.1\.1-dev\.0\.\d{14}`, assert.NoError},
-		{"one-tag-one-commit", oneTagOneCommitFixture, `v0\.1\.1-dev\.1`, assert.NoError},
-		{"one-tag-one-commit-dirty", oneTagOneCommitDirtyFixture, `v0\.1\.1-dev\.1\.\d{14}`, assert.NoError},
+		{"one-tag-dirty", oneTaggedDirtyFixture, `v0\.1\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
+		{"one-tag-one-commit", oneTagOneCommitFixture, `v0\.1\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
+		{"one-tag-one-commit-dirty", oneTagOneCommitDirtyFixture, `v0\.1\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -180,7 +181,7 @@ func TestGetVersion(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			gotVs, err := floatingversion.Get(repo, head, false)
+			gotVs, err := floatingversion.Describe(repo, head, gitrepo.RootScope())
 			if !tt.wantErr(t, err, fmt.Sprintf("Get(%v)", tt.repo)) {
 				return
 			}

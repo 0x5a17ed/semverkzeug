@@ -25,15 +25,15 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/spf13/cobra"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/bump"
+	"github.com/0x5a17ed/semverkzeug/pkg/bumper"
 	"github.com/0x5a17ed/semverkzeug/pkg/cli"
 )
 
 var (
-	partMap = map[string]bump.Part{
-		"major": bump.Major,
-		"minor": bump.Minor,
-		"patch": bump.Patch,
+	partMap = map[string]bumper.Part{
+		"major": bumper.Major,
+		"minor": bumper.Minor,
+		"patch": bumper.Patch,
 	}
 
 	partKeys = (func() (out []string) {
@@ -55,7 +55,8 @@ func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	newTag, err := bump.It(repo, head, partMap[args[0]])
+	scope, _ := cli.GetScope(ctx)
+	newTag, err := bumper.CreateTag(repo, head, partMap[args[0]], scope)
 	if err != nil {
 		return err
 	}

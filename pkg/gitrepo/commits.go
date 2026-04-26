@@ -1,0 +1,112 @@
+package gitrepo
+
+import (
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"strings"
+
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
+)
+
+type hashPrefixStorer interface {
+	HashesWithPrefix(prefix []byte) ([]plumbing.Hash, error)
+}
+
+func abbreviateCommitWithHashPrefix(r *git.Repository, h plumbing.Hash, st hashPrefixStorer) (string, error) {
+	for i, n := 4, len(h); i <= n; i++ {
+		prefix := h[:i]
+
+		hashes, err := st.HashesWithPrefix(prefix)
+		if err != nil {
+			return "", fmt.Errorf("find hashes with prefix %q: %w", prefix, err)
+		}
+
+		commitMatches := 0
+		matchedTarget := false
+
+		for _, candidate := range hashes {
+			_, err := r.CommitObject(candidate)
+			if err == nil {
+				commitMatches++
+				if candidate == h {
+					matchedTarget = true
+				}
+				if commitMatches > 1 {
+					break
+				}
+				continue
+			}
+
+			if !errors.Is(err, plumbing.ErrObjectNotFound) {
+				return "", fmt.Errorf("resolve candidate commit %s: %w", candidate, err)
+			}
+		}
+
+		if matchedTarget && commitMatches == 1 {
+			return hex.EncodeToString(h[:i]), nil
+		}
+	}
+
+	return h.String(), nil
+}
+
+func abbreviateCommitByScanning(r *git.Repository, h plumbing.Hash) (string, error) {
+	full := h.String()
+
+	for i, n := 7, len(full); i <= n; i++ {
+		prefix := full[:i]
+
+		iter, err := r.CommitObjects()
+		if err != nil {
+			return "", fmt.Errorf("iterate commit objects: %w", err)
+		}
+
+		commitMatches := 0
+		matchedTarget := false
+
+		err = iter.ForEach(func(c *object.Commit) error {
+			if !strings.HasPrefix(c.Hash.String(), prefix) {
+				return nil
+			}
+
+			commitMatches++
+
+			if c.Hash == h {
+				matchedTarget = true
+			}
+
+			if commitMatches > 1 {
+				return storer.ErrStop
+			}
+
+			return nil
+		})
+
+		if err != nil && !errors.Is(err, storer.ErrStop) {
+			return "", fmt.Errorf("scan commit objects for prefix %q: %w", prefix, err)
+		}
+
+		if matchedTarget && commitMatches == 1 {
+			return full[:i], nil
+		}
+	}
+
+	return full, nil
+}
+
+// AbbreviatedCommitHash returns a shortened hash of the commit that uniquely identifies the commit.
+func AbbreviatedCommitHash(r *git.Repository, h plumbing.Hash) (string, error) {
+	if _, err := r.CommitObject(h); err != nil {
+		return "", fmt.Errorf("resolve target commit %s: %w", h, err)
+	}
+
+	if store, ok := r.Storer.(hashPrefixStorer); ok {
+		return abbreviateCommitWithHashPrefix(r, h, store)
+	}
+
+	return abbreviateCommitByScanning(r, h)
+}

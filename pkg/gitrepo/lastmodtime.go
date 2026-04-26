@@ -1,0 +1,121 @@
+/*
+ * Copyright(C) 2022 individual contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * <https://www.apache.org/licenses/LICENSE-2.0>
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied.  See the License for the specific
+ * language governing permissions and limitations under the License.
+ */
+
+package gitrepo
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"path/filepath"
+	"time"
+
+	"github.com/go-git/go-billy/v5"
+	"github.com/go-git/go-git/v5"
+)
+
+var (
+	ErrNotDirty = errors.New("repository is clean")
+)
+
+type findMTimeResult struct {
+	mtime time.Time
+	next  string
+	found bool
+}
+
+func findMTimeStep(vfs billy.Filesystem, fp string) (findMTimeResult, error) {
+	fi, err := vfs.Lstat(fp)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		// File was deleted. Try the parent directory.
+		parent := filepath.Dir(fp)
+
+		// Make sure we haven't reached the root yet.
+		if parent == fp {
+			return findMTimeResult{}, fmt.Errorf("stat %q: %w", fp, err)
+		}
+
+		// Force a directory read to bust the NFS attribute cache.
+		// Reading entries often triggers fresher metadata than Lstat alone.
+		_, _ = vfs.ReadDir(parent)
+
+		// Move up to the parent and try again.
+		return findMTimeResult{
+			next: parent,
+		}, nil
+
+	case err != nil:
+		return findMTimeResult{}, fmt.Errorf("stat %q: %w", fp, err)
+	}
+
+	return findMTimeResult{
+		mtime: fi.ModTime().UTC(),
+		found: true,
+	}, nil
+}
+
+// FindPathMTime returns the modification time associated with fp in the working tree.
+//
+// For existing paths, it returns the path's own mtime.
+//
+// For paths that have been deleted, it walks up to the nearest existing
+// ancestor and returns that ancestor's mtime. This lets callers still derive
+// a meaningful modification time for deleted entries, since removing a file
+// updates its parent directory rather than leaving metadata on the removed
+// path itself.
+//
+// A directory read may be performed before restatting an ancestor to reduce
+// stale metadata from filesystem attribute caches.
+//
+// The returned time is normalized to UTC.
+func FindPathMTime(vfs billy.Filesystem, fp string) (time.Time, error) {
+	for {
+		result, err := findMTimeStep(vfs, fp)
+		if err != nil {
+			return time.Time{}, err
+		}
+
+		if result.found {
+			return result.mtime, nil
+		}
+
+		fp = result.next
+	}
+}
+
+// FindWorktreeMTime returns the last modification time of the files in the working tree.
+func FindWorktreeMTime(wt *git.Worktree, st git.Status) (*time.Time, error) {
+	var latestChange time.Time
+
+	for fp, fst := range st {
+		if fst.Worktree == git.Unmodified && fst.Staging == git.Unmodified {
+			continue
+		}
+
+		switch mtime, err := FindPathMTime(wt.Filesystem, fp); {
+		case err != nil:
+			return nil, err
+		case mtime.After(latestChange):
+			latestChange = mtime
+		}
+	}
+
+	if latestChange.IsZero() {
+		return nil, ErrNotDirty
+	}
+	return &latestChange, nil
+}

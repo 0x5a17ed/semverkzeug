@@ -20,12 +20,15 @@ import (
 	"context"
 
 	"github.com/go-git/go-git/v5"
+
+	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 )
 
 type ContextKey int
 
 const (
 	GitRepositoryKey ContextKey = iota
+	ScopeKey
 )
 
 func WithGitRepository(ctx context.Context, repo *git.Repository) context.Context {
@@ -34,5 +37,14 @@ func WithGitRepository(ctx context.Context, repo *git.Repository) context.Contex
 
 func GetGitRepository(ctx context.Context) (repo *git.Repository, ok bool) {
 	repo, ok = ctx.Value(GitRepositoryKey).(*git.Repository)
+	return
+}
+
+func WithScope(ctx context.Context, scope gitrepo.Scope) context.Context {
+	return context.WithValue(ctx, ScopeKey, scope)
+}
+
+func GetScope(ctx context.Context) (scope gitrepo.Scope, ok bool) {
+	scope, ok = ctx.Value(ScopeKey).(gitrepo.Scope)
 	return
 }

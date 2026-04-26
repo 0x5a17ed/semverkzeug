@@ -27,6 +27,7 @@ import (
 
 	"github.com/0x5a17ed/semverkzeug/pkg/cli"
 	"github.com/0x5a17ed/semverkzeug/pkg/floatingversion"
+	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 )
 
 var (
@@ -45,16 +46,31 @@ func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	vs, err := floatingversion.Get(repo, head, withCommitHash)
+	scope, _ := cli.GetScope(ctx)
+	vs, err := floatingversion.Describe(repo, head, scope)
 	if err != nil {
 		return err
 	}
 
-	if noPrefix {
-		_, err = fmt.Println(vs.Version.String())
-	} else {
-		_, err = fmt.Println(vs.String())
+	// Add the commit hash to the version if requested.
+	if withCommitHash && vs.Guide.HasCommit() {
+		abbreviatedHash, err := gitrepo.AbbreviatedCommitHash(repo, vs.Guide.Commit.Hash)
+		if err != nil {
+			return fmt.Errorf("abbreviate commit hash: %w", err)
+		}
+
+		vs.Spec.Version, err = vs.Spec.Version.SetMetadata("g" + abbreviatedHash)
+		if err != nil {
+			return fmt.Errorf("set metadata: %w", err)
+		}
 	}
+
+	if noPrefix {
+		_, err = fmt.Println(vs.Spec.Version.String())
+	} else {
+		_, err = fmt.Println(vs.Spec.String())
+	}
+
 	return err
 }
 

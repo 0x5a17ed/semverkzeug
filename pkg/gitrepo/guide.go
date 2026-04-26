@@ -17,69 +17,107 @@
 package gitrepo
 
 import (
-	"regexp"
+	"fmt"
+	"slices"
+	"sort"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/storer"
 )
+
+func SelectHighestVersionTag(tags []VersionTaggedCommit) VersionTaggedCommit {
+	cp := slices.Clone(tags)
+
+	sort.Slice(cp, func(i, j int) bool {
+		a, b := cp[i], cp[j]
+
+		// Sort highest version first.
+		if a.VersionSpec.Version.GreaterThan(&b.VersionSpec.Version) {
+			return true
+		}
+		if a.VersionSpec.Version.LessThan(&b.VersionSpec.Version) {
+			return false
+		}
+
+		// Prefer annotated tags over lightweight tags.
+		if a.IsAnnotated != b.IsAnnotated {
+			return a.IsAnnotated && !b.IsAnnotated
+		}
+
+		// Prefer tags with a later date.
+		if !a.Date.Equal(b.Date) {
+			return a.Date.After(b.Date)
+		}
+
+		// Use lexicographic order for tags with the same version as the last tie-breaker.
+		return a.TagName > b.TagName
+	})
+
+	return cp[0]
+}
 
 // Guide describes the distance in Depth of the value in Hash to
 // the commit with the given Tags or the initial commit if there
 // are no tags.
 type Guide struct {
-	Tags  []string
+	// Commit is the commit at the given Hash.
+	Commit *object.Commit
+
+	// Tags is the list of tags that point to the given commit.
+	Tags []VersionTaggedCommit
+
+	// Depth is the distance in commits from the given Hash to the commit with the given Tags.
 	Depth int
-	Hash  plumbing.Hash
 
 	r *git.Repository
 }
 
-func (n Guide) AbbreviatedHash() string {
-	hString := n.Hash.String()
-	hLength := len(hString)
-	for i := 7; i < hLength; i++ {
-		v := hString[:i]
-		h, err := n.r.ResolveRevision(plumbing.Revision(v))
-		if err == nil && *h == n.Hash {
-			return v
-		}
-	}
-	return hString
+func (g Guide) HasCommit() bool {
+	return g.Commit != nil && !g.Commit.Hash.IsZero()
 }
 
-// GetGuide looks at the given git repository and gives the given
+// NewGuide looks at the given git repository and gives the given
 // plumbing.Reference ref a human-readable name based on another
 // available ref.
-func GetGuide(repo *git.Repository, ref *plumbing.Reference, tagPattern *regexp.Regexp) (guide Guide, err error) {
-	guide.r, guide.Hash = repo, ref.Hash()
+func NewGuide(repo *git.Repository, ref *plumbing.Reference, scope Scope) (*Guide, error) {
+	guide := &Guide{r: repo}
 
-	tm, err := GetTagMap(repo)
-	if err != nil {
-		return guide, err
-	}
-
-	// Fast path: check if we have a direct hit.
-	if ts := tm.FindMatches(&guide.Hash, tagPattern); len(ts) != 0 {
-		guide.Tags = ts
+	if ref == nil {
 		return guide, nil
 	}
 
-	commits, err := repo.Log(&git.LogOptions{
-		From:  guide.Hash,
-		Order: git.LogOrderCommitterTime, // This might need to be LogOrderBSF.
-	})
+	commit, err := repo.CommitObject(ref.Hash())
 	if err != nil {
-		return guide, err
+		return nil, fmt.Errorf("resolve commit object: %w", err)
 	}
-	_ = commits.ForEach(func(c *object.Commit) error {
-		if ts := tm.FindMatches(&c.Hash, tagPattern); len(ts) != 0 {
+	guide.Commit = commit
+
+	tm, err := NewVersionTagMapFromRepo(repo, &scope)
+	if err != nil {
+		return nil, fmt.Errorf("build version tag map: %w", err)
+	}
+
+	// Follow the parents until we find a version tag.
+	for c := guide.Commit; c != nil; {
+		if ts, ok := tm[c.Hash]; ok && len(ts) > 0 {
 			guide.Tags = ts
-			return storer.ErrStop
+			return guide, nil
 		}
-		guide.Depth += 1
-		return nil
-	})
+
+		guide.Depth++
+
+		if c.NumParents() == 0 {
+			// No parents left, so we're at the root'.
+			break
+		}
+
+		// Follow the first parent.
+		if c, err = c.Parent(0); err != nil {
+			return nil, fmt.Errorf("read first parent: %w", err)
+		}
+	}
+
+	// No version tag was found.
 	return guide, nil
 }

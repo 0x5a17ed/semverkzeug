@@ -53,6 +53,7 @@ func TestDescribe(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Arrange: Set up the test environment and fixtures.
 			cx := tt.args.repo(t)
 
 			head, err := cx.Repository().Head()
@@ -60,9 +61,14 @@ func TestDescribe(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			gotVs, err := floatingversion.Describe(cx, head, gitrepo.RootScope())
+			guide, err := gitrepo.BuildGuide(cx, head, gitrepo.RootScope())
 			require.NoError(t, err)
 
+			// Act: Describe the floating version based on the guide.
+			gotVs, err := floatingversion.Describe(cx, guide)
+			require.NoError(t, err)
+
+			// Assert: The floating version matches the expected pattern.
 			assert.Regexp(t, tt.args.wantVer, gotVs.String())
 		})
 	}

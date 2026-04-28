@@ -38,10 +38,10 @@ func Filesystem(t *testing.T, cx *gitrepo.Context) billy.Filesystem {
 	return wt.Filesystem
 }
 
-func WriteFile(t *testing.T, gCx *gitrepo.Context, name, text string) {
+func WriteFile(t *testing.T, cx *gitrepo.Context, name, text string) {
 	t.Helper()
 
-	wt := Worktree(t, gCx)
+	wt := Worktree(t, cx)
 
 	err := wt.Filesystem.MkdirAll(filepath.Dir(name), 0755)
 	require.NoError(t, err, "failed to create directory %s", filepath.Dir(name))
@@ -54,12 +54,12 @@ func WriteFile(t *testing.T, gCx *gitrepo.Context, name, text string) {
 	require.NoError(t, err)
 }
 
-func CommitFile(t *testing.T, gCx *gitrepo.Context, name, content string) plumbing.Hash {
+func CommitFile(t *testing.T, cx *gitrepo.Context, name, content string) plumbing.Hash {
 	t.Helper()
 
-	wt := Worktree(t, gCx)
+	wt := Worktree(t, cx)
 
-	WriteFile(t, gCx, name, content)
+	WriteFile(t, cx, name, content)
 
 	require.NoError(t, wt.AddWithOptions(&git.AddOptions{Path: name}))
 
@@ -72,28 +72,28 @@ func CommitFile(t *testing.T, gCx *gitrepo.Context, name, content string) plumbi
 	return h
 }
 
-func Checkout(t *testing.T, gCx *gitrepo.Context, name string, create bool) {
+func Checkout(t *testing.T, cx *gitrepo.Context, name string, create bool) {
 	t.Helper()
 
-	require.NoError(t, Worktree(t, gCx).Checkout(&git.CheckoutOptions{
+	require.NoError(t, Worktree(t, cx).Checkout(&git.CheckoutOptions{
 		Branch: plumbing.NewBranchReferenceName(name),
 		Create: create,
 	}))
 }
 
-func Head(t *testing.T, gCx *gitrepo.Context) *plumbing.Reference {
+func Head(t *testing.T, cx *gitrepo.Context) *plumbing.Reference {
 	t.Helper()
 
-	ref, err := gCx.Repository().Head()
+	ref, err := cx.Repository().Head()
 	require.NoError(t, err)
 
 	return ref
 }
 
-func CreateTag(t *testing.T, gCx *gitrepo.Context, name string) plumbing.Hash {
+func CreateTag(t *testing.T, cx *gitrepo.Context, name string) plumbing.Hash {
 	t.Helper()
 
-	ref, err := gCx.Repository().CreateTag(name, Head(t, gCx).Hash(), &git.CreateTagOptions{
+	ref, err := cx.Repository().CreateTag(name, Head(t, cx).Hash(), &git.CreateTagOptions{
 		Tagger:  TestSig,
 		Message: "tagged commit",
 	})
@@ -179,6 +179,18 @@ func RepoWithTwoCommitsOneTagDirty(t *testing.T) *gitrepo.Context {
 	cx := RepoWithTwoCommitsOneTagClean(t)
 
 	WriteFile(t, cx, "bar", "baz")
+
+	return cx
+}
+
+func RepoWithScopedTags(t *testing.T) *gitrepo.Context {
+	cx := RepoWithOneCommitNoTagsClean(t)
+
+	CreateTag(t, cx, "v1.0.0")
+
+	CommitFile(t, cx, "baa", "baz")
+
+	CreateTag(t, cx, "mod/v2.0.0")
 
 	return cx
 }

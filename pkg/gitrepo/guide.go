@@ -28,6 +28,9 @@ import (
 // Guide describes the relationship between a reference (typically
 // HEAD) and the highest version tag it shares history with.
 type Guide struct {
+	// Scope describes the scope under which the Guide applies.
+	Scope Scope
+
 	// Commit is the commit at the given ref.
 	Commit *object.Commit
 
@@ -70,7 +73,22 @@ func (g Guide) HasCommit() bool {
 	return g.Commit != nil && !g.Commit.Hash.IsZero()
 }
 
-// NewGuide finds the highest version tag whose commit shares
+// IsPure reports whether the Guide describes a tagged commit exactly,
+// rather than a developmental snapshot some distance past it.
+func (g Guide) IsPure() bool {
+	return len(g.Tags) > 0 && g.Depth == 0
+}
+
+// HighestVersion returns the highest version tag in the Guide, or
+// nil if there is none.
+func (g Guide) HighestVersion() *VersionTag {
+	if len(g.Tags) == 0 {
+		return nil
+	}
+	return &g.Tags[0]
+}
+
+// BuildGuide finds the highest version tag whose commit shares
 // history with ref, then describes how far ref has diverged from
 // that tag's branch point.
 //
@@ -79,11 +97,11 @@ func (g Guide) HasCommit() bool {
 // experimental work.  Tags that sit "in the future" of ref (ref is
 // a strict ancestor of the tag) are also skipped — they describe
 // versions that don't exist yet from ref's perspective.
-func NewGuide(gCx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error) {
-	r := gCx.Repository()
+func BuildGuide(cx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error) {
+	r := cx.Repository()
 
 	if ref == nil {
-		return &Guide{}, nil
+		return &Guide{Scope: scope}, nil
 	}
 
 	head, err := r.CommitObject(ref.Hash())
@@ -91,13 +109,13 @@ func NewGuide(gCx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error
 		return nil, fmt.Errorf("resolve commit object: %w", err)
 	}
 
-	versionTagsIter, doneFn := IterVersionTags(gCx, &scope)
+	versionTagsIter, doneFn := IterVersionTags(cx, &scope)
 	versionTags := slices.SortedStableFunc(versionTagsIter, VersionTag.CompareDesc)
 	if err := doneFn(); err != nil {
 		return nil, fmt.Errorf("collect tags: %w", err)
 	}
 	if len(versionTags) > 0 {
-		guide, err := selectReachableTag(r, head, versionTags)
+		guide, err := selectReachableTag(r, head, scope, versionTags)
 		if err != nil {
 			return nil, fmt.Errorf("select reachable tag: %w", err)
 		}
@@ -114,6 +132,7 @@ func NewGuide(gCx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error
 	}
 
 	guide := &Guide{
+		Scope:  scope,
 		Commit: head,
 		Depth:  depth,
 	}
@@ -125,7 +144,12 @@ func NewGuide(gCx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error
 // commit shares non-trivial history with head, applying the
 // tip-filter and the "future tag" guard.  Returns nil when no tag
 // qualifies (caller should fall back to the no-tag path).
-func selectReachableTag(repo *git.Repository, head *object.Commit, tags []VersionTag) (*Guide, error) {
+func selectReachableTag(
+	repo *git.Repository,
+	head *object.Commit,
+	scope Scope,
+	tags []VersionTag,
+) (*Guide, error) {
 	tipSet, err := buildTipSet(repo)
 	if err != nil {
 		return nil, fmt.Errorf("build tip set: %w", err)
@@ -166,6 +190,7 @@ func selectReachableTag(repo *git.Repository, head *object.Commit, tags []Versio
 		}
 
 		return &Guide{
+			Scope:     scope,
 			Commit:    head,
 			Tags:      collectSameVersion(tags, vtc.VersionSpec),
 			MergeBase: mergeBase,

@@ -30,54 +30,43 @@ import (
 
 func mustScope(t *testing.T, s string) gitrepo.Scope {
 	t.Helper()
+
 	sc, err := gitrepo.ParseScope(s)
 	require.NoError(t, err)
+
 	return sc
 }
 
-func taggedFixture(t *testing.T) (*gitrepo.Context, *plumbing.Reference) {
-	gCx := gitfixture.RepoWithOneCommitNoTagsClean(t)
+func TestBuildGuide_ScopedTagSelection(t *testing.T) {
+	cx := gitfixture.RepoWithScopedTags(t)
 
-	head, err := gCx.Repository().Head()
-	require.NoError(t, err)
-
-	_, err = gCx.Repository().CreateTag("v1.0.0", head.Hash(), nil)
-	require.NoError(t, err)
-
-	gitfixture.CommitFile(t, gCx, "baa", "baz")
-
-	_, err = gCx.Repository().CreateTag("mod/v1.0.0", head.Hash(), nil)
-	require.NoError(t, err)
-
-	return gCx, head
-}
-
-func TestLatestScopedTagSelection(t *testing.T) {
-	cx, head := taggedFixture(t)
+	head := gitfixture.Head(t, cx)
 
 	t.Run("root-scope", func(t *testing.T) {
-		vs, err := gitrepo.FindLatestVersion(cx, head, mustScope(t, "."))
+		guide, err := gitrepo.BuildGuide(cx, head, gitrepo.RootScope())
 		require.NoError(t, err)
 
-		require.Len(t, vs.Guide.Tags, 1)
-		assert.Equal(t, "v1.0.0", vs.Guide.Tags[0].TagName)
-		assert.Equal(t, "v", vs.Spec.Prefix)
-		assert.Equal(t, "1.0.0", vs.Spec.Version.String())
+		vt := guide.HighestVersion()
+		require.NotNil(t, vt)
+		assert.Equal(t, "v1.0.0", vt.TagName)
+		assert.Equal(t, "v", vt.VersionSpec.Prefix)
+		assert.Equal(t, "1.0.0", vt.VersionSpec.Version.String())
 	})
 
 	t.Run("module-scope", func(t *testing.T) {
-		vs, err := gitrepo.FindLatestVersion(cx, head, mustScope(t, "mod"))
+		guide, err := gitrepo.BuildGuide(cx, head, mustScope(t, "mod"))
 		require.NoError(t, err)
 
-		require.Len(t, vs.Guide.Tags, 1)
-		assert.Equal(t, "mod/v1.0.0", vs.Guide.Tags[0].TagName)
-		assert.Equal(t, "mod", vs.Spec.Scope.String())
-		assert.Equal(t, "v", vs.Spec.Prefix)
-		assert.Equal(t, "1.0.0", vs.Spec.Version.String())
+		vt := guide.HighestVersion()
+		require.NotNil(t, vt)
+		assert.Equal(t, "mod/v2.0.0", vt.TagName)
+		assert.Equal(t, "mod", vt.VersionSpec.Scope.String())
+		assert.Equal(t, "v", vt.VersionSpec.Prefix)
+		assert.Equal(t, "2.0.0", vt.VersionSpec.Version.String())
 	})
 }
 
-// TestFindLatestVersionSideBranchTag covers the release-branch
+// TestBuildGuide_SideBranchTag covers the release-branch
 // model where the version tag lives on a branch cut from main.
 //
 //	A--B--C (main, HEAD)
@@ -86,7 +75,7 @@ func TestLatestScopedTagSelection(t *testing.T) {
 //
 // merge-base(C, T) == B; main is one commit ahead of where v0.5
 // branched.
-func TestFindLatestVersionSideBranchTag(t *testing.T) {
+func TestBuildGuide_SideBranchTag(t *testing.T) {
 	repo := gitfixture.RepoWithOneCommitNoTagsClean(t) // commit A on main
 	bHash := gitfixture.CommitFile(t, repo, "b.txt", "b")
 
@@ -102,28 +91,29 @@ func TestFindLatestVersionSideBranchTag(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, cHash, head.Hash())
 
-	vs, err := gitrepo.FindLatestVersion(repo, head, gitrepo.RootScope())
+	guide, err := gitrepo.BuildGuide(repo, head, gitrepo.RootScope())
 	require.NoError(t, err)
 
-	require.Len(t, vs.Guide.Tags, 1)
-	assert.Equal(t, "v0.5.0", vs.Guide.Tags[0].TagName)
-	assert.Equal(t, "0.5.0", vs.Spec.Version.String())
-	require.NotNil(t, vs.Guide.MergeBase)
-	assert.Equal(t, bHash, vs.Guide.MergeBase.Hash)
-	assert.Equal(t, 1, vs.Guide.Depth)
+	vt := guide.HighestVersion()
+	require.NotNil(t, vt)
+	assert.Equal(t, "v0.5.0", vt.TagName)
+	assert.Equal(t, "0.5.0", vt.VersionSpec.Version.String())
+	require.NotNil(t, guide.MergeBase)
+	assert.Equal(t, bHash, guide.MergeBase.Hash)
+	assert.Equal(t, 1, guide.Depth)
 }
 
-// TestFindLatestVersionMultipleReleaseBranches mirrors the
+// TestBuildGuide_MultipleReleaseBranches mirrors the
 // brainstorm scenario: two release branches diverge from different
 // points on main.
 //
 //	A--B--C--D (main, HEAD)
 //	    \  \
-//	    t04 t05 [v0.5.0]
-//	    [v0.4.0]
+//	     \  t05 [v0.5.0]
+//	      t04 [v0.4.0]
 //
 // v0.5.0 wins by semver; merge-base(D, v0.5.0) == C.
-func TestFindLatestVersionMultipleReleaseBranches(t *testing.T) {
+func TestBuildGuide_MultipleReleaseBranches(t *testing.T) {
 	repo := gitfixture.RepoWithOneCommitNoTagsClean(t) // A
 	bHash := gitfixture.CommitFile(t, repo, "b.txt", "b")
 	cHash := gitfixture.CommitFile(t, repo, "c.txt", "c")
@@ -153,21 +143,21 @@ func TestFindLatestVersionMultipleReleaseBranches(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, dHash, head.Hash())
 
-	vs, err := gitrepo.FindLatestVersion(repo, head, gitrepo.RootScope())
+	guide, err := gitrepo.BuildGuide(repo, head, gitrepo.RootScope())
 	require.NoError(t, err)
 
-	require.Len(t, vs.Guide.Tags, 1)
-	assert.Equal(t, "v0.5.0", vs.Guide.Tags[0].TagName)
-	require.NotNil(t, vs.Guide.MergeBase)
-	assert.Equal(t, cHash, vs.Guide.MergeBase.Hash)
-	assert.Equal(t, 1, vs.Guide.Depth)
+	require.Len(t, guide.Tags, 1)
+	assert.Equal(t, "v0.5.0", guide.Tags[0].TagName)
+	require.NotNil(t, guide.MergeBase)
+	assert.Equal(t, cHash, guide.MergeBase.Hash)
+	assert.Equal(t, 1, guide.Depth)
 }
 
-// TestFindLatestVersionAncestorOfTag verifies that a tag living in
+// TestBuildGuide_AncestorOfTag verifies that a tag living in
 // HEAD's "future" (HEAD is a strict ancestor of the tag) is not
-// selected.  Otherwise we'd report a version that didn't exist at
+// selected.  Otherwise, we'd report a version that didn't exist at
 // HEAD's point in history.
-func TestFindLatestVersionAncestorOfTag(t *testing.T) {
+func TestBuildGuide_AncestorOfTag(t *testing.T) {
 	repo := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
 	headRef, err := repo.Repository().Head()
@@ -184,23 +174,21 @@ func TestFindLatestVersionAncestorOfTag(t *testing.T) {
 	// hasn't been "released" yet from there.
 	earlyRef := plumbing.NewHashReference(plumbing.HEAD, earlyHash)
 
-	vs, err := gitrepo.FindLatestVersion(repo, earlyRef, gitrepo.RootScope())
+	guide, err := gitrepo.BuildGuide(repo, earlyRef, gitrepo.RootScope())
 	require.NoError(t, err)
 
-	assert.Empty(t, vs.Guide.Tags, "tag in HEAD's future must not be picked")
-	assert.Nil(t, vs.Guide.MergeBase)
-	// Falls back to the initial version.
-	assert.Equal(t, "0.0.1-dev.0", vs.Spec.Version.String())
+	assert.Empty(t, guide.Tags, "tag in HEAD's future must not be picked")
+	assert.Nil(t, guide.MergeBase)
 }
 
-// TestFindLatestVersionStrandedTagFiltered verifies that a tag on a
+// TestBuildGuide_StrandedTagFiltered verifies that a tag on a
 // commit not reachable from any branch is ignored — the merge-base
 // strategy would otherwise match it via the repo root.
-func TestFindLatestVersionStrandedTagFiltered(t *testing.T) {
+func TestBuildGuide_StrandedTagFiltered(t *testing.T) {
 	repo := gitfixture.RepoWithOneCommitNoTagsClean(t) // A on main
 
 	// Build a side branch with a tag, then delete the branch so the
-	// tagged commit is only kept alive by the tag itself.
+	// tag itself only keeps the tagged commit alive.
 	gitfixture.Checkout(t, repo, "experimental", true)
 	expHash := gitfixture.CommitFile(t, repo, "exp.txt", "experiment")
 	_, err := repo.Repository().CreateTag("v9.0.0", expHash, nil)
@@ -217,11 +205,11 @@ func TestFindLatestVersionStrandedTagFiltered(t *testing.T) {
 	_, err = repo.Repository().CreateTag("v0.1.0", mainHead.Hash(), nil)
 	require.NoError(t, err)
 
-	vs, err := gitrepo.FindLatestVersion(repo, mainHead, gitrepo.RootScope())
+	guide, err := gitrepo.BuildGuide(repo, mainHead, gitrepo.RootScope())
 	require.NoError(t, err)
 
-	require.Len(t, vs.Guide.Tags, 1)
-	assert.Equal(t, "v0.1.0", vs.Guide.Tags[0].TagName,
+	require.Len(t, guide.Tags, 1)
+	assert.Equal(t, "v0.1.0", guide.Tags[0].TagName,
 		"stranded v9.0.0 must not outrank reachable v0.1.0")
 }
 
@@ -234,7 +222,7 @@ func TestFindLatestVersionStrandedTagFiltered(t *testing.T) {
 //	A--B--C (main, HEAD)
 //	    \
 //	     T [v0.5.0] (origin/release/0.5; no local release branch)
-func TestFindLatestVersionTagOnRemoteTrackingBranch(t *testing.T) {
+func TestBuildGuide_RemoteTrackingBranch(t *testing.T) {
 	// Arrange: build the side branch locally, tag it, then convert it
 	// into a remote-tracking-only ref so no `refs/heads/*` reaches T.
 	repo := gitfixture.RepoWithOneCommitNoTagsClean(t) // A on main
@@ -263,15 +251,15 @@ func TestFindLatestVersionTagOnRemoteTrackingBranch(t *testing.T) {
 	require.Equal(t, cHash, head.Hash())
 
 	// Act.
-	vs, err := gitrepo.FindLatestVersion(repo, head, gitrepo.RootScope())
+	guide, err := gitrepo.BuildGuide(repo, head, gitrepo.RootScope())
 	require.NoError(t, err)
 
 	// Assert: v0.5.0 is reachable via origin/release/0.5 and must not
 	// be filtered out as stranded.
-	require.Len(t, vs.Guide.Tags, 1,
+	require.Len(t, guide.Tags, 1,
 		"v0.5.0 reachable via origin/release/0.5 must not be filtered as stranded")
-	assert.Equal(t, "v0.5.0", vs.Guide.Tags[0].TagName)
-	require.NotNil(t, vs.Guide.MergeBase)
-	assert.Equal(t, bHash, vs.Guide.MergeBase.Hash)
-	assert.Equal(t, 1, vs.Guide.Depth)
+	assert.Equal(t, "v0.5.0", guide.Tags[0].TagName)
+	require.NotNil(t, guide.MergeBase)
+	assert.Equal(t, bHash, guide.MergeBase.Hash)
+	assert.Equal(t, 1, guide.Depth)
 }

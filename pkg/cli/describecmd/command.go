@@ -36,39 +36,46 @@ var (
 )
 
 func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
-	gCx, ok := cli.GetGitContext(ctx)
+	cx, ok := cli.GetGitContext(ctx)
 	if !ok {
 		return git.ErrRepositoryNotExists
 	}
 
-	head, err := gCx.Repository().Head()
+	head, err := cx.Repository().Head()
 	if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
 		return err
 	}
 
 	scope, _ := cli.GetScope(ctx)
-	vs, err := floatingversion.Describe(gCx, head, scope)
+
+	guide, err := gitrepo.BuildGuide(cx, head, scope)
+	if err != nil {
+		return fmt.Errorf("build guide: %w", err)
+	}
+
+	spec, err := floatingversion.Describe(cx, guide)
 	if err != nil {
 		return err
 	}
 
 	// Add the commit hash to the version if requested.
-	if withCommitHash && vs.Guide.HasCommit() {
-		abbreviatedHash, err := gitrepo.AbbreviatedCommitHash(gCx, vs.Guide.Commit.Hash)
+	if withCommitHash && guide.HasCommit() {
+		abbreviatedHash, err := gitrepo.AbbreviatedCommitHash(cx, guide.Commit.Hash)
 		if err != nil {
 			return fmt.Errorf("abbreviate commit hash: %w", err)
 		}
 
-		vs.Spec.Version, err = vs.Spec.Version.SetMetadata("g" + abbreviatedHash)
+		v, err := spec.Version.SetMetadata("g" + abbreviatedHash)
 		if err != nil {
 			return fmt.Errorf("set metadata: %w", err)
 		}
+		spec = spec.WithVersion(v)
 	}
 
 	if noPrefix {
-		_, err = fmt.Println(vs.Spec.Version.String())
+		_, err = fmt.Println(spec.Version.String())
 	} else {
-		_, err = fmt.Println(vs.Spec.String())
+		_, err = fmt.Println(spec.String())
 	}
 
 	return err

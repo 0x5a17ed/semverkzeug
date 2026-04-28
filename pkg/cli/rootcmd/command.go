@@ -89,7 +89,7 @@ func persistentPreRunE(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-	gCx, err := gitrepo.NewContextFromPath(repoPath)
+	cx, err := gitrepo.NewContextFromPath(repoPath)
 	switch {
 	case errors.Is(err, git.ErrRepositoryNotExists):
 		return nil
@@ -97,12 +97,12 @@ func persistentPreRunE(cmd *cobra.Command, args []string) (err error) {
 		return fmt.Errorf("create git context: %w", err)
 	}
 
-	scope, err := scopeForRepoPath(gCx, repoPath)
+	scope, err := scopeForRepoPath(cx, repoPath)
 	if err != nil {
 		return err
 	}
 
-	ctx := cli.WithGitContext(cmd.Context(), gCx)
+	ctx := cli.WithGitContext(cmd.Context(), cx)
 	ctx = cli.WithScope(ctx, scope)
 	cmd.SetContext(ctx)
 	return

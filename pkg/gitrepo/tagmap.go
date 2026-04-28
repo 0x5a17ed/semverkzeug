@@ -148,9 +148,9 @@ func resolveCommitTag(repo *git.Repository, ref *plumbing.Reference) (*CommitTag
 }
 
 // IterCommitTags returns an iterator over all tags resolving to a commit in the repository.
-func IterCommitTags(gCx *Context) (iter.Seq[CommitTag], func() error) {
+func IterCommitTags(cx *Context) (iter.Seq[CommitTag], func() error) {
 	return xit.Perform(func(yield func(CommitTag) bool) error {
-		r := gCx.Repository()
+		r := cx.Repository()
 
 		tagIter, err := r.Tags()
 		if err != nil {
@@ -224,9 +224,9 @@ func FilterMapVersionTags(seq iter.Seq[CommitTag]) iter.Seq[VersionTag] {
 }
 
 // IterVersionTags returns an iterator over all version tags in the repository.
-func IterVersionTags(gCx *Context, scope *Scope) (iter.Seq[VersionTag], func() error) {
+func IterVersionTags(cx *Context, scope *Scope) (iter.Seq[VersionTag], func() error) {
 	// Iterate over all tags resolving to a commit.
-	taggedCommits, doneFn := IterCommitTags(gCx)
+	taggedCommits, doneFn := IterCommitTags(cx)
 
 	// Map tagged commits to version tags.
 	versionTags := FilterMapVersionTags(taggedCommits)
@@ -262,8 +262,8 @@ func CollectVersionTagMap(seq iter.Seq[VersionTag]) (out VersionTagMap) {
 
 // NewVersionTagMapFromRepo returns a map of git plumbing.Hash pointing to one or
 // more annotated and unannotated tag names.
-func NewVersionTagMapFromRepo(gCx *Context, scope *Scope) (out VersionTagMap, err error) {
-	versionTagsIter, doneFn := IterVersionTags(gCx, scope)
+func NewVersionTagMapFromRepo(cx *Context, scope *Scope) (out VersionTagMap, err error) {
+	versionTagsIter, doneFn := IterVersionTags(cx, scope)
 
 	// Collect version tags into a map.
 	out = CollectVersionTagMap(versionTagsIter)

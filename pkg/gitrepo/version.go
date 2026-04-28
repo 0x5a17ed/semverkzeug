@@ -16,12 +16,6 @@
 
 package gitrepo
 
-import (
-	"fmt"
-
-	"github.com/go-git/go-git/v5/plumbing"
-)
-
 var initialVersion = func() VersionSpec {
 	vs, err := ParseVersionSpec("v0.0.1-dev.0")
 	if err != nil {
@@ -30,45 +24,13 @@ var initialVersion = func() VersionSpec {
 	return vs
 }()
 
-type VersionState struct {
-	Spec VersionSpec
-
-	// Guide explains how to reach the current version.
-	Guide *Guide
-}
-
-func (v VersionState) String() string {
-	return fmt.Sprintf("%s", v.Spec)
-}
-
-// HasGuide reports whether v has a version guide.
-func (v VersionState) HasGuide() bool {
-	return v.Guide != nil
-}
-
-// IsPure reports whether v identifies a tagged commit exactly,
-// rather than a developmental snapshot some distance past it.
-func (v VersionState) IsPure() bool {
-	return v.HasGuide() && len(v.Guide.Tags) > 0 && v.Guide.Depth == 0
-}
-
-// FindLatestVersion returns the latest version of the repo.
-func FindLatestVersion(gCx *Context, ref *plumbing.Reference, scope Scope) (*VersionState, error) {
-	guide, err := NewGuide(gCx, ref, scope)
-	if err != nil {
-		return nil, fmt.Errorf("build version guide: %w", err)
+func LatestSpec(g *Guide) VersionSpec {
+	vt := g.HighestVersion()
+	if vt == nil {
+		// Return the initial version if there are no tags with
+		// the given scope applied.
+		return initialVersion.WithScope(g.Scope)
 	}
 
-	if len(guide.Tags) == 0 {
-		// No version tags found.
-		return &VersionState{
-			Spec:  initialVersion.WithScope(scope),
-			Guide: guide,
-		}, nil
-	}
-
-	return &VersionState{
-		Spec:  guide.Tags[0].VersionSpec.WithScope(scope),
-		Guide: guide,
-	}, nil
+	return vt.VersionSpec
 }

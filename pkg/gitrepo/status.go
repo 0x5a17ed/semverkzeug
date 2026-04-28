@@ -23,8 +23,8 @@ import (
 )
 
 // BuildWorktreeStatus returns the status of the working tree with external.
-func BuildWorktreeStatus(gcx *Context) (git.Status, error) {
-	wt, err := gcx.LoadWorktree()
+func BuildWorktreeStatus(cx *Context) (git.Status, error) {
+	wt, err := cx.LoadWorktree()
 	if err != nil {
 		return nil, fmt.Errorf("load worktree: %w", err)
 	}

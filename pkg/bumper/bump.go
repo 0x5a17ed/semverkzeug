@@ -62,12 +62,12 @@ func Bump(ov semver.Version, part Part) semver.Version {
 	}
 }
 
-func VerifyRepo(gCx *gitrepo.Context, ref *plumbing.Reference) error {
+func VerifyRepo(cx *gitrepo.Context, ref *plumbing.Reference) error {
 	if ref == nil {
 		return ErrRepositoryIsEmpty
 	}
 
-	st, err := gitrepo.BuildWorktreeStatus(gCx)
+	st, err := gitrepo.BuildWorktreeStatus(cx)
 	if err != nil {
 		return fmt.Errorf("read worktree status: %w", err)
 	}
@@ -80,35 +80,36 @@ func VerifyRepo(gCx *gitrepo.Context, ref *plumbing.Reference) error {
 }
 
 func CreateTag(
-	gCx *gitrepo.Context,
+	cx *gitrepo.Context,
 	ref *plumbing.Reference,
 	part Part,
 	scope gitrepo.Scope,
 ) (*plumbing.Reference, error) {
-	if err := VerifyRepo(gCx, ref); err != nil {
+	if err := VerifyRepo(cx, ref); err != nil {
 		return nil, err
 	}
 
-	oldVersion, err := gitrepo.FindLatestVersion(gCx, ref, scope)
+	guide, err := gitrepo.BuildGuide(cx, ref, scope)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build guide: %w", err)
 	}
 
-	newVersion := oldVersion.Spec.WithVersion(Bump(oldVersion.Spec.Version, part))
-	uiprint.Step("Creating annotated tag %s", newVersion.String())
+	currSpec := gitrepo.LatestSpec(guide)
+	nextLabel := currSpec.WithVersion(Bump(currSpec.Version, part)).String()
+	uiprint.Step("Creating annotated tag %s", nextLabel)
 
 	var message string
-	if len(oldVersion.Guide.Tags) == 0 {
+	if len(guide.Tags) == 0 {
 		// No tags were used to find the previous version;
 		// this means this is the first version to be tagged.
-		message = fmt.Sprintf("first version %s", newVersion.String())
+		message = fmt.Sprintf("first version %s", nextLabel)
 
 	} else {
-		message = fmt.Sprintf("bump version %s -> %s", oldVersion.String(), newVersion.String())
+		message = fmt.Sprintf("bump version %s -> %s", currSpec.String(), nextLabel)
 	}
 
 	target := ref.Hash().String()[:8]
-	if commit, cErr := gCx.Repository().CommitObject(ref.Hash()); cErr == nil {
+	if commit, cErr := cx.Repository().CommitObject(ref.Hash()); cErr == nil {
 		subject, _, _ := strings.Cut(commit.Message, "\n")
 		if subject = strings.TrimSpace(subject); subject != "" {
 			target = fmt.Sprintf("%s (%s)", target, subject)
@@ -119,17 +120,17 @@ func CreateTag(
 	var tagRef *plumbing.Reference
 
 	// Check if the repository is backed by a filesystem storage.
-	st, ok := gCx.Repository().Storer.(*filesystem.Storage)
+	st, ok := cx.Repository().Storer.(*filesystem.Storage)
 	if ok && st != nil && st.Filesystem() != nil {
 		// Use the native git implementation to ensure consistency with other git commands.
-		tagRef, err = createTagNative(gCx, ref, newVersion, message, st.Filesystem().Root())
+		tagRef, err = createTagNative(cx, ref, nextLabel, message, st.Filesystem().Root())
 		if err != nil {
 			return nil, err
 		}
 
 	} else {
 		// Fall back to tag creation via internal implementation.
-		tagRef, err = createTagVirtual(gCx, ref, newVersion, message)
+		tagRef, err = createTagVirtual(cx, ref, nextLabel, message)
 		if err != nil {
 			return nil, err
 		}
@@ -141,13 +142,13 @@ func CreateTag(
 
 // createTagVirtual creates a tag using the internal implementation.
 func createTagVirtual(
-	gCx *gitrepo.Context,
+	cx *gitrepo.Context,
 	ref *plumbing.Reference,
-	newVersion gitrepo.VersionSpec,
+	label string,
 	message string,
 ) (*plumbing.Reference, error) {
 	// Fall back to tag creation via internal implementation.
-	tagRef, err := gCx.Repository().CreateTag(newVersion.String(), ref.Hash(), &git.CreateTagOptions{
+	tagRef, err := cx.Repository().CreateTag(label, ref.Hash(), &git.CreateTagOptions{
 		Message: message,
 	})
 	if err != nil {
@@ -159,19 +160,19 @@ func createTagVirtual(
 
 // createTagNative creates a tag using the native git implementation.
 func createTagNative(
-	gCx *gitrepo.Context,
+	cx *gitrepo.Context,
 	ref *plumbing.Reference,
-	newVersion gitrepo.VersionSpec,
+	label string,
 	message string,
 	dotGit string,
 ) (*plumbing.Reference, error) {
-	wtFs, err := gCx.LoadWorktreeFilesystem()
+	wtFs, err := cx.LoadWorktreeFilesystem()
 	if err != nil {
 		return nil, fmt.Errorf("get worktree filesystem: %w", err)
 	}
 
 	// Use the native git implementation to ensure consistency with other git commands.
-	gitArgs := []string{"tag", "-a", "-F", "-", newVersion.String(), ref.Hash().String()}
+	gitArgs := []string{"tag", "-a", "-F", "-", label, ref.Hash().String()}
 
 	uiprint.Substep("Running: git %s", strings.Join(gitArgs, " "))
 
@@ -196,10 +197,6 @@ func createTagNative(
 		return nil, fmt.Errorf("start command: %w", err)
 	}
 
-	// Write the tag message to the stdin pipe.
-	_, _ = io.WriteString(stdin, message)
-	_ = stdin.Close()
-
 	// If git takes more than a moment, surface a hint that it's
 	// likely waiting on a hardware key or GPG passphrase.  Most of
 	// the time the timer is cancelled before it fires.
@@ -208,12 +205,16 @@ func createTagNative(
 	})
 	defer hintTimer.Stop()
 
+	// Write the tag message to the stdin pipe.
+	_, _ = io.WriteString(stdin, message)
+	_ = stdin.Close()
+
 	// Wait for the command to finish.
 	if err := cmd.Wait(); err != nil {
 		return nil, err
 	}
 
-	tagRef, err := gCx.Repository().Tag(newVersion.String())
+	tagRef, err := cx.Repository().Tag(label)
 	if err != nil {
 		return nil, err
 	}

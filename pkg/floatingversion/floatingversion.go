@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 )
@@ -32,46 +31,43 @@ func formatMTime(t *time.Time) string {
 
 	return fmt.Sprintf(
 		"%s%02dZ",
-		t.UTC().Format("060102T150405"),
+		ut.Format("060102T150405"),
 		ut.Nanosecond()/10_000_000,
 	)
 }
 
 // Describe returns a floating version string for the given reference.
 func Describe(
-	gCx *gitrepo.Context,
-	ref *plumbing.Reference,
-	scope gitrepo.Scope,
-) (vs *gitrepo.VersionState, err error) {
-	if vs, err = gitrepo.FindLatestVersion(gCx, ref, scope); err != nil {
-		return nil, fmt.Errorf("find latest version: %w", err)
-	}
-
-	mtime, err := gitrepo.FindWorktreeMTime(gCx)
+	cx *gitrepo.Context,
+	guide *gitrepo.Guide,
+) (gitrepo.VersionSpec, error) {
+	mtime, err := gitrepo.FindWorktreeMTime(cx)
 	switch {
 	case errors.Is(err, git.ErrIsBareRepository):
 		err = nil // Ignore.
 	case errors.Is(err, gitrepo.ErrWorktreeClean):
 		err = nil // Ignore.
 	case err != nil:
-		return nil, fmt.Errorf("find worktree mtime: %w", err)
+		return gitrepo.VersionSpec{}, fmt.Errorf("find worktree mtime: %w", err)
 	default:
 		// Fall through.
 	}
 
+	spec := gitrepo.LatestSpec(guide)
+
 	// Return the latest version if there are no changes.
-	if mtime == nil && vs.IsPure() {
-		return vs, nil
+	if mtime == nil && guide.IsPure() {
+		return spec, nil
 	}
 
 	// Bump the patch version if there are no pre-releases.
-	if vs.Spec.Version.Prerelease() == "" {
-		vs.Spec.Version = vs.Spec.Version.IncPatch()
+	if spec.Version.Prerelease() == "" {
+		spec.Version = spec.Version.IncPatch()
 	}
 
 	// Use last commit time as the timestamp if there are no changes.
-	if mtime == nil && vs.HasGuide() && vs.Guide.HasCommit() {
-		mtime = &vs.Guide.Commit.Committer.When
+	if mtime == nil && guide.HasCommit() {
+		mtime = &guide.Commit.Committer.When
 	}
 
 	// Set the prerelease version to "dev" and the timestamp.
@@ -81,10 +77,10 @@ func Describe(
 	}
 	prerelease := fmt.Sprintf("dev.%s", devCounter)
 
-	vs.Spec.Version, err = vs.Spec.Version.SetPrerelease(prerelease)
+	spec.Version, err = spec.Version.SetPrerelease(prerelease)
 	if err != nil {
-		return nil, err
+		return gitrepo.VersionSpec{}, err
 	}
 
-	return vs, nil
+	return spec, nil
 }

@@ -75,11 +75,11 @@ func (g Guide) HasCommit() bool {
 // history with ref, then describes how far ref has diverged from
 // that tag's branch point.
 //
-// Tags whose commit is not reachable from any local branch are
-// skipped to avoid picking up stranded or experimental work.  Tags
-// that sit "in the future" of ref (ref is a strict ancestor of the
-// tag) are also skipped — they describe versions that don't exist
-// yet from ref's perspective.
+// Tags whose commit is not reachable from any branch (local or
+// remote-tracking) are skipped to avoid picking up stranded or
+// experimental work.  Tags that sit "in the future" of ref (ref is
+// a strict ancestor of the tag) are also skipped — they describe
+// versions that don't exist yet from ref's perspective.
 func NewGuide(gCx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error) {
 	r := gCx.Repository()
 
@@ -177,7 +177,8 @@ func selectReachableTag(
 	for _, vtc := range candidates {
 		// Skip tags on stranded commits when we have a tip-set to
 		// compare against.  An empty tip-set means the repo has no
-		// branches; fall back to considering every tag in that case.
+		// branches at all; fall back to considering every tag in
+		// that case.
 		if len(tipSet) > 0 && !tipSet[vtc.CommitHash] {
 			continue
 		}
@@ -237,21 +238,29 @@ func collectSameVersion(candidates []VersionTag, spec VersionSpec) []VersionTag 
 }
 
 // buildTipSet returns the set of commit hashes reachable from any
-// local branch.  An empty set means the repo has no branches at
-// all, in which case callers should treat every tag as in-scope.
+// local branch or remote-tracking ref.  Remote-tracking refs are
+// included because typical CI checkouts and fresh clones leave
+// every non-checked-out branch as `refs/remotes/origin/*`; ignoring
+// them would wrongly classify legitimate release-branch tags as
+// stranded.  An empty set means the repo has no branches at all,
+// in which case callers should treat every tag as in-scope.
 func buildTipSet(repo *git.Repository) (map[plumbing.Hash]bool, error) {
 	set := map[plumbing.Hash]bool{}
 
-	branchIter, err := repo.Branches()
+	refIter, err := repo.References()
 	if err != nil {
-		return nil, fmt.Errorf("list branches: %w", err)
+		return nil, fmt.Errorf("list references: %w", err)
 	}
 
-	err = branchIter.ForEach(func(ref *plumbing.Reference) error {
+	err = refIter.ForEach(func(ref *plumbing.Reference) error {
+		name := ref.Name()
+		if !name.IsBranch() && !name.IsRemote() {
+			return nil
+		}
 		commit, cErr := repo.CommitObject(ref.Hash())
 		if cErr != nil {
-			// Branches that don't resolve to a commit (broken refs)
-			// don't contribute to reachability.
+			// Refs that don't resolve to a commit (broken or
+			// symbolic refs) don't contribute to reachability.
 			return nil
 		}
 		iter := object.NewCommitPreorderIter(commit, set, nil)
@@ -261,7 +270,7 @@ func buildTipSet(repo *git.Repository) (map[plumbing.Hash]bool, error) {
 		})
 	})
 	if err != nil {
-		return nil, fmt.Errorf("walk branches: %w", err)
+		return nil, fmt.Errorf("walk references: %w", err)
 	}
 
 	return set, nil

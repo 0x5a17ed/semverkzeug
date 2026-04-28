@@ -224,3 +224,54 @@ func TestFindLatestVersionStrandedTagFiltered(t *testing.T) {
 	assert.Equal(t, "v0.1.0", vs.Guide.Tags[0].TagName,
 		"stranded v9.0.0 must not outrank reachable v0.1.0")
 }
+
+// TestFindLatestVersionTagOnRemoteTrackingBranch covers the typical
+// CI / fresh-clone setup: only the checked-out branch exists locally;
+// every other branch is present as `refs/remotes/origin/*`.  A
+// release-branch tag whose commit is reachable solely via a
+// remote-tracking ref is *not* stranded and must still be selected.
+//
+//	A--B--C (main, HEAD)
+//	    \
+//	     T [v0.5.0] (origin/release/0.5; no local release branch)
+func TestFindLatestVersionTagOnRemoteTrackingBranch(t *testing.T) {
+	// Arrange: build the side branch locally, tag it, then convert it
+	// into a remote-tracking-only ref so no `refs/heads/*` reaches T.
+	repo := gitfixture.RepoWithOneCommitNoTagsClean(t) // A on main
+	bHash := gitfixture.CommitFile(t, repo, "b.txt", "b")
+
+	gitfixture.Checkout(t, repo, "release/0.5", true)
+	tHash := gitfixture.CommitFile(t, repo, "release.txt", "notes")
+	_, err := repo.Repository().CreateTag("v0.5.0", tHash, nil)
+	require.NoError(t, err)
+
+	gitfixture.Checkout(t, repo, "main", false)
+	require.NoError(t, repo.Repository().Storer.RemoveReference(
+		plumbing.NewBranchReferenceName("release/0.5"),
+	))
+	require.NoError(t, repo.Repository().Storer.SetReference(
+		plumbing.NewHashReference(
+			plumbing.NewRemoteReferenceName("origin", "release/0.5"),
+			tHash,
+		),
+	))
+
+	cHash := gitfixture.CommitFile(t, repo, "c.txt", "c")
+
+	head, err := repo.Repository().Head()
+	require.NoError(t, err)
+	require.Equal(t, cHash, head.Hash())
+
+	// Act.
+	vs, err := gitrepo.FindLatestVersion(repo, head, gitrepo.RootScope())
+	require.NoError(t, err)
+
+	// Assert: v0.5.0 is reachable via origin/release/0.5 and must not
+	// be filtered out as stranded.
+	require.Len(t, vs.Guide.Tags, 1,
+		"v0.5.0 reachable via origin/release/0.5 must not be filtered as stranded")
+	assert.Equal(t, "v0.5.0", vs.Guide.Tags[0].TagName)
+	require.NotNil(t, vs.Guide.MergeBase)
+	assert.Equal(t, bHash, vs.Guide.MergeBase.Hash)
+	assert.Equal(t, 1, vs.Guide.Depth)
+}

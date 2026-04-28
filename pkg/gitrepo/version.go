@@ -67,11 +67,8 @@ func FindLatestVersion(gCx *Context, ref *plumbing.Reference, scope Scope) (*Ver
 		}, nil
 	}
 
-	// Select the best version tag.
-	vtc := SelectHighestVersionTag(guide.Tags)
-
 	return &VersionState{
-		Spec:  vtc.VersionSpec.WithScope(scope),
+		Spec:  guide.Tags[0].VersionSpec.WithScope(scope),
 		Guide: guide,
 	}, nil
 }

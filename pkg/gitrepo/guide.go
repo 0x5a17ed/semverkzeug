@@ -19,7 +19,6 @@ package gitrepo
 import (
 	"fmt"
 	"slices"
-	"sort"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -92,13 +91,13 @@ func NewGuide(gCx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error
 		return nil, fmt.Errorf("resolve commit object: %w", err)
 	}
 
-	tm, err := NewVersionTagMapFromRepo(gCx, &scope)
-	if err != nil {
-		return nil, fmt.Errorf("build version tag map: %w", err)
+	versionTagsIter, doneFn := IterVersionTags(gCx, &scope)
+	versionTags := slices.SortedStableFunc(versionTagsIter, VersionTag.CompareDesc)
+	if err := doneFn(); err != nil {
+		return nil, fmt.Errorf("collect tags: %w", err)
 	}
-
-	if len(tm) > 0 {
-		guide, err := selectReachableTag(r, head, tm)
+	if len(versionTags) > 0 {
+		guide, err := selectReachableTag(r, head, versionTags)
 		if err != nil {
 			return nil, fmt.Errorf("select reachable tag: %w", err)
 		}
@@ -122,59 +121,17 @@ func NewGuide(gCx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error
 	return guide, nil
 }
 
-// SelectHighestVersionTag returns the highest version tag from a list of
-// VersionTag based on version and metadata hierarchy.
-func SelectHighestVersionTag(tags []VersionTag) VersionTag {
-	cp := slices.Clone(tags)
-
-	sort.Slice(cp, func(i, j int) bool {
-		a, b := cp[i], cp[j]
-
-		// Sort highest version first.
-		if a.VersionSpec.Version.GreaterThan(&b.VersionSpec.Version) {
-			return true
-		}
-		if a.VersionSpec.Version.LessThan(&b.VersionSpec.Version) {
-			return false
-		}
-
-		// Prefer annotated tags over lightweight tags.
-		if a.IsAnnotated != b.IsAnnotated {
-			return a.IsAnnotated && !b.IsAnnotated
-		}
-
-		// Prefer tags with a later date.
-		if !a.TagDate.Equal(b.TagDate) {
-			return a.TagDate.After(b.TagDate)
-		}
-
-		// Use lexicographic order for tags with the same version as the last tie-breaker.
-		return a.TagName > b.TagName
-	})
-
-	return cp[0]
-}
-
 // selectReachableTag picks the highest-semver tag from tm whose
 // commit shares non-trivial history with head, applying the
 // tip-filter and the "future tag" guard.  Returns nil when no tag
 // qualifies (caller should fall back to the no-tag path).
-func selectReachableTag(
-	repo *git.Repository,
-	head *object.Commit,
-	tm VersionTagMap,
-) (*Guide, error) {
+func selectReachableTag(repo *git.Repository, head *object.Commit, tags []VersionTag) (*Guide, error) {
 	tipSet, err := buildTipSet(repo)
 	if err != nil {
 		return nil, fmt.Errorf("build tip set: %w", err)
 	}
 
-	candidates := flattenTagMap(tm)
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].VersionSpec.Version.GreaterThan(&candidates[j].VersionSpec.Version)
-	})
-
-	for _, vtc := range candidates {
+	for _, vtc := range tags {
 		// Skip tags on stranded commits when we have a tip-set to
 		// compare against.  An empty tip-set means the repo has no
 		// branches at all; fall back to considering every tag in
@@ -210,21 +167,13 @@ func selectReachableTag(
 
 		return &Guide{
 			Commit:    head,
-			Tags:      collectSameVersion(candidates, vtc.VersionSpec),
+			Tags:      collectSameVersion(tags, vtc.VersionSpec),
 			MergeBase: mergeBase,
 			Depth:     depth,
 		}, nil
 	}
 
 	return nil, nil
-}
-
-func flattenTagMap(tm VersionTagMap) []VersionTag {
-	out := make([]VersionTag, 0, len(tm))
-	for _, tags := range tm {
-		out = append(out, tags...)
-	}
-	return out
 }
 
 func collectSameVersion(candidates []VersionTag, spec VersionSpec) []VersionTag {

@@ -17,6 +17,7 @@
 package gitrepo
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"iter"
@@ -183,8 +184,26 @@ type VersionTag struct {
 	VersionSpec VersionSpec
 }
 
-func (c VersionTag) String() string {
-	return fmt.Sprintf("%s (%s)", c.TagName, c.CommitHash)
+func (vt VersionTag) String() string {
+	return fmt.Sprintf("%s (%s)", vt.TagName, vt.CommitHash)
+}
+
+// CompareDesc returns -1, 0, or 1 if this VersionTag is higher than, equal to, or lower than b.
+func (vt VersionTag) CompareDesc(b VersionTag) int {
+	// Sort the highest version first. Swap operands here to ensure descending order.
+	if c := b.VersionSpec.Version.Compare(&vt.VersionSpec.Version); c != 0 {
+		return c
+	}
+	// Prefer annotated tags over lightweight tags.
+	if c := cmpDesc(boolToInt(vt.IsAnnotated), boolToInt(b.IsAnnotated)); c != 0 {
+		return c
+	}
+	// Prefer tags with a later date. Swap operands here to ensure descending order.
+	if c := b.TagDate.Compare(vt.TagDate); c != 0 {
+		return c
+	}
+	// Use lexicographic order for tags with the same version as the last tie-breaker.
+	return cmpDesc(vt.TagName, b.TagName)
 }
 
 // FilterMapVersionTags returns an iterator that yields VersionTag objects.
@@ -254,4 +273,22 @@ func NewVersionTagMapFromRepo(gCx *Context, scope *Scope) (out VersionTagMap, er
 	}
 
 	return out, nil
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+func cmpDesc[T cmp.Ordered](a, b T) int {
+	switch {
+	case a == b:
+		return 0
+	case a > b:
+		return -1
+	default:
+		return 1
+	}
 }

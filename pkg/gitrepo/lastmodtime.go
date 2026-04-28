@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
 var (
@@ -97,28 +98,25 @@ func findMTimePath(vfs billy.Filesystem, fp string) (time.Time, error) {
 	}
 }
 
-// findWorktreeMTime determines the latest modification time in the working tree based on its status.
-func findWorktreeMTime(wt *git.Worktree, st git.Status) (*time.Time, error) {
-	var latestChange time.Time
-
-	for fp, fst := range st {
-		// Ignore unmodified files.
-		if fst.Worktree == git.Unmodified && fst.Staging == git.Unmodified {
-			continue
-		}
-
-		switch mtime, err := findMTimePath(wt.Filesystem, fp); {
-		case err != nil:
-			return nil, err
-		case mtime.After(latestChange):
-			latestChange = mtime
-		}
+// findIndexMTime returns the modification time of the repository's
+// index file when the repo is backed by filesystem storage.  Returns
+// a nil time without error for in-memory storage or when the index
+// has not yet been created.
+func findIndexMTime(cx *Context) (*time.Time, error) {
+	s, ok := cx.Repository().Storer.(*filesystem.Storage)
+	if !ok || s == nil || s.Filesystem() == nil {
+		return nil, nil
 	}
 
-	if latestChange.IsZero() {
-		return nil, ErrWorktreeClean
+	fi, err := s.Filesystem().Stat("index")
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, nil
+	case err != nil:
+		return nil, fmt.Errorf("stat index: %w", err)
 	}
-	return &latestChange, nil
+
+	return new(fi.ModTime().UTC()), nil
 }
 
 // FindWorktreeMTime returns the last modification time of the files in the working tree.
@@ -133,5 +131,35 @@ func FindWorktreeMTime(cx *Context) (*time.Time, error) {
 		return nil, fmt.Errorf("read status: %w", err)
 	}
 
-	return findWorktreeMTime(wt, st)
+	var latestChange time.Time
+
+	// Try seeding latestChange from the index file first.
+	switch indexMTime, err := findIndexMTime(cx); {
+	case err != nil:
+		return nil, fmt.Errorf("find index mtime: %w", err)
+	case indexMTime != nil:
+		latestChange = *indexMTime
+	}
+
+	// Walk the working tree to find the latest change.
+	var dirty bool
+	for fp, fst := range st {
+		// Ignore unmodified files.
+		if fst.Worktree == git.Unmodified && fst.Staging == git.Unmodified {
+			continue
+		}
+		dirty = true
+
+		switch mtime, err := findMTimePath(wt.Filesystem, fp); {
+		case err != nil:
+			return nil, err
+		case mtime.After(latestChange):
+			latestChange = mtime
+		}
+	}
+
+	if !dirty {
+		return nil, ErrWorktreeClean
+	}
+	return &latestChange, nil
 }

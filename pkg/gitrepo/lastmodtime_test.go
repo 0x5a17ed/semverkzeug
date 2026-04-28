@@ -1,4 +1,4 @@
-package gitrepo
+package gitrepo_test
 
 import (
 	"testing"
@@ -8,102 +8,88 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/testhelper"
+	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/pkg/internal/gitfixture"
 )
 
 func TestLastModificationTime(t *testing.T) {
 	t.Run("clean repo returns error", func(t *testing.T) {
-		scope := testhelper.RepoOneCommitClean(t)
+		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
-		st, err := scope.WorkTree.Status()
-		require.NoError(t, err)
-
-		mtime, err := FindWorktreeMTime(scope.WorkTree, st)
-		require.ErrorIs(t, err, ErrNotDirty)
+		mtime, err := gitrepo.FindWorktreeMTime(scope)
+		require.ErrorIs(t, err, gitrepo.ErrWorktreeClean)
 
 		assert.Nil(t, mtime)
 	})
 
 	t.Run("consider untracked files", func(t *testing.T) {
-		scope := testhelper.RepoOneCommitClean(t)
+		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
-		testhelper.WriteFile(t, scope, "/baa", []byte("baz"))
+		gitfixture.WriteFile(t, scope, "/baa", "baz")
 
-		inf, err := scope.Filesystem.Stat("/baa")
+		inf, err := gitfixture.Worktree(t, scope).Filesystem.Stat("/baa")
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		st, err := scope.WorkTree.Status()
-		require.NoError(t, err)
-
 		// Assert that the mtime of the untracked file is reported.
-		mtime, err := FindWorktreeMTime(scope.WorkTree, st)
+		mtime, err := gitrepo.FindWorktreeMTime(scope)
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, after, *mtime, 100*time.Millisecond)
 	})
 
 	t.Run("modified file mtime", func(t *testing.T) {
-		scope := testhelper.RepoOneCommitClean(t)
+		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
 		// Modify the file to ensure the repo reports a dirty state.
-		testhelper.WriteFile(t, scope, "/foo", []byte("baz"))
+		gitfixture.WriteFile(t, scope, "/foo", "baz")
 
-		inf, err := scope.Filesystem.Stat("/foo")
+		inf, err := gitfixture.Filesystem(t, scope).Stat("/foo")
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		st, err := scope.WorkTree.Status()
-		require.NoError(t, err)
-
-		mtime, err := FindWorktreeMTime(scope.WorkTree, st)
+		mtime, err := gitrepo.FindWorktreeMTime(scope)
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, after, *mtime, 100*time.Millisecond)
 	})
 
 	t.Run("deleted file reports parent directory mtime", func(t *testing.T) {
-		scope := testhelper.RepoOneCommitClean(t)
+		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
-		dirInfoBefore, err := scope.Filesystem.Stat("/")
+		dirInfoBefore, err := gitfixture.Filesystem(t, scope).Stat("/")
 		require.NoError(t, err)
 		before := dirInfoBefore.ModTime().UTC()
 
-		err = scope.Filesystem.Remove("/foo")
+		err = gitfixture.Filesystem(t, scope).Remove("/foo")
 		require.NoError(t, err)
 
-		dirInfoAfter, err := scope.Filesystem.Stat("/")
+		dirInfoAfter, err := gitfixture.Filesystem(t, scope).Stat("/")
 		require.NoError(t, err)
 		after := dirInfoAfter.ModTime().UTC()
 
 		// Optional sanity check: never goes backwards.
 		assert.False(t, after.Before(before), "mtime should not go backwards")
 
-		st, err := scope.WorkTree.Status()
-		require.NoError(t, err)
-
-		mtime, err := FindWorktreeMTime(scope.WorkTree, st)
+		mtime, err := gitrepo.FindWorktreeMTime(scope)
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, after, *mtime, 100*time.Millisecond)
 	})
 
 	t.Run("deleted directory reports parent directory mtime", func(t *testing.T) {
-		scope := testhelper.RepoEmpty(t)
+		scope := gitfixture.RepoEmpty(t)
 
-		testhelper.CommitFile(t, scope, "foo/baa/baz", "bar")
+		gitfixture.CommitFile(t, scope, "foo/baa/baz", "bar")
 
-		err := util.RemoveAll(scope.Filesystem, "/foo")
+		err := util.RemoveAll(gitfixture.Filesystem(t, scope), "/foo")
 		require.NoError(t, err)
 
-		inf, err := scope.Filesystem.Stat("/")
+		inf, err := gitfixture.Filesystem(t, scope).Stat("/")
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		st, err := scope.WorkTree.Status()
-		require.NoError(t, err)
-
-		mtime, err := FindWorktreeMTime(scope.WorkTree, st)
+		mtime, err := gitrepo.FindWorktreeMTime(scope)
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, after, *mtime, 100*time.Millisecond)

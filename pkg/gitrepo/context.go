@@ -1,0 +1,97 @@
+package gitrepo
+
+import (
+	"fmt"
+	"sync"
+
+	"github.com/go-git/go-billy/v5"
+	"github.com/go-git/go-billy/v5/osfs"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
+)
+
+type Context struct {
+	repo *git.Repository
+
+	wt struct {
+		once  sync.Once
+		value *git.Worktree
+		err   error
+	}
+}
+
+func (cx *Context) loadWorktreeOnce() (*git.Worktree, error) {
+	wt, err := cx.repo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("get worktree: %w", err)
+	}
+
+	rootFS := osfs.New("/")
+
+	systemPatterns, err := gitignore.LoadSystemPatterns(rootFS)
+	if err != nil {
+		return nil, fmt.Errorf("load system gitignore patterns: %w", err)
+	}
+	wt.Excludes = append(wt.Excludes, systemPatterns...)
+
+	globalPatterns, err := gitignore.LoadGlobalPatterns(rootFS)
+	if err != nil {
+		return nil, fmt.Errorf("load global gitignore patterns: %w", err)
+	}
+	wt.Excludes = append(wt.Excludes, globalPatterns...)
+
+	return wt, nil
+}
+
+func (cx *Context) String() string {
+	return fmt.Sprintf("gitrepo.Context{repo=%#v}", cx.repo)
+}
+
+// Repository returns the underlying git repository.
+func (cx *Context) Repository() *git.Repository {
+	return cx.repo
+}
+
+// LoadWorktree returns a worktree for the repository.
+func (cx *Context) LoadWorktree() (*git.Worktree, error) {
+	cx.wt.once.Do(func() {
+		cx.wt.value, cx.wt.err = cx.loadWorktreeOnce()
+	})
+
+	return cx.wt.value, cx.wt.err
+}
+
+// LoadWorktreeFilesystem returns the filesystem for the repository.
+func (cx *Context) LoadWorktreeFilesystem() (billy.Filesystem, error) {
+	wt, err := cx.LoadWorktree()
+	if err != nil {
+		return nil, fmt.Errorf("load worktree: %w", err)
+	}
+	return wt.Filesystem, nil
+}
+
+func newContext(r *git.Repository) (*Context, error) {
+	cx := &Context{
+		repo: r,
+	}
+
+	return cx, nil
+}
+
+// NewContextFromPath creates a new Context from a git repository at the given
+// path on the filesystem.
+func NewContextFromPath(p string) (*Context, error) {
+	repo, err := git.PlainOpenWithOptions(p, &git.PlainOpenOptions{
+		DetectDotGit:          true,
+		EnableDotGitCommonDir: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("open repository %#q: %w", p, err)
+	}
+
+	return newContext(repo)
+}
+
+func NewContextFromRepo(r *git.Repository) (*Context, error) {
+	return newContext(r)
+}

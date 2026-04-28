@@ -28,7 +28,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-type TaggedCommit struct {
+type CommitTag struct {
 	// TagName of the tag.
 	TagName string
 
@@ -39,22 +39,22 @@ type TaggedCommit struct {
 	// CommitHash of the commit the tag points to.
 	CommitHash plumbing.Hash
 
-	// Date of the tag.
+	// TagDate of the tag.
 	// - For annotated tags: tagger time.
 	// - For lightweight tags: target commit committer time (best practical approximation).
-	Date time.Time
+	TagDate time.Time
 }
 
-type resolvedTag struct {
-	hash       plumbing.Hash
-	taggedTime time.Time
+type peeledTag struct {
+	commitHash plumbing.Hash
+	tagDate    time.Time
 }
 
-// peelTagTargetToCommit recursively peels a tag object to a commit object.
-func peelTagTargetToCommit(repo *git.Repository, tagObj *object.Tag) (*resolvedTag, error) {
+// peelTagObjectToCommit recursively peels a tag object to a commit object.
+func peelTagObjectToCommit(repo *git.Repository, tagObj *object.Tag) (*peeledTag, error) {
 	// Usually annotated tags target commits directly.
 	if commit, err := repo.CommitObject(tagObj.Target); err == nil {
-		return &resolvedTag{commit.Hash, commit.Committer.When}, nil
+		return &peeledTag{commit.Hash, commit.Committer.When}, nil
 	}
 
 	// Some tags can point to tag objects; peel recursively.
@@ -66,12 +66,12 @@ func peelTagTargetToCommit(repo *git.Repository, tagObj *object.Tag) (*resolvedT
 		return nil, fmt.Errorf("get tag object: %w", err)
 	}
 
-	return peelTagTargetToCommit(repo, nextTag)
+	return peelTagObjectToCommit(repo, nextTag)
 }
 
-func resolveTagAnnotated(repo *git.Repository, tagObj *object.Tag) (*resolvedTag, error) {
+func peelCommitTagAnnotated(repo *git.Repository, tagObj *object.Tag) (*peeledTag, error) {
 	// Peel the tag target to a commit.
-	rt, err := peelTagTargetToCommit(repo, tagObj)
+	rt, err := peelTagObjectToCommit(repo, tagObj)
 	if err != nil {
 		return nil, fmt.Errorf("peel tag target to commit: %w", err)
 	}
@@ -84,13 +84,13 @@ func resolveTagAnnotated(repo *git.Repository, tagObj *object.Tag) (*resolvedTag
 	// Annotated tags can have a tagger time.
 	if !tagObj.Tagger.When.IsZero() {
 		// Override the committer time with the tagger time.
-		rt.taggedTime = tagObj.Tagger.When
+		rt.tagDate = tagObj.Tagger.When
 	}
 
 	return rt, nil
 }
 
-func resolveTagLightweight(repo *git.Repository, ref *plumbing.Reference) (*resolvedTag, error) {
+func peelCommitTagLightweight(repo *git.Repository, ref *plumbing.Reference) (*peeledTag, error) {
 	commit, err := repo.CommitObject(ref.Hash())
 	switch {
 	case errors.Is(err, plumbing.ErrObjectNotFound):
@@ -99,21 +99,20 @@ func resolveTagLightweight(repo *git.Repository, ref *plumbing.Reference) (*reso
 		return nil, fmt.Errorf("get commit object: %w", err)
 	}
 
-	return &resolvedTag{commit.Hash, commit.Committer.When}, nil
+	return &peeledTag{commit.Hash, commit.Committer.When}, nil
 }
 
-func resolveTag(repo *git.Repository, ref *plumbing.Reference) (*TaggedCommit, error) {
+func resolveCommitTag(repo *git.Repository, ref *plumbing.Reference) (*CommitTag, error) {
 	var annotated bool
-	var tc *resolvedTag
+	var tc *peeledTag
 
 	// First, try resolving hash to an annotated tag object.
-	tagObj, err := repo.TagObject(ref.Hash())
-	switch {
+	switch tagObj, err := repo.TagObject(ref.Hash()); {
 	case errors.Is(err, plumbing.ErrObjectNotFound):
 		// Looks like a lightweight tag without annotations.
 		annotated = false
 
-		tc, err = resolveTagLightweight(repo, ref)
+		tc, err = peelCommitTagLightweight(repo, ref)
 		if err != nil {
 			return nil, fmt.Errorf("resolve tag lightweight: %w", err)
 		}
@@ -126,7 +125,7 @@ func resolveTag(repo *git.Repository, ref *plumbing.Reference) (*TaggedCommit, e
 		// This is an annotated tag.
 		annotated = true
 
-		tc, err = resolveTagAnnotated(repo, tagObj)
+		tc, err = peelCommitTagAnnotated(repo, tagObj)
 		if err != nil {
 			return nil, fmt.Errorf("resolve tag annotated: %w", err)
 		}
@@ -137,26 +136,28 @@ func resolveTag(repo *git.Repository, ref *plumbing.Reference) (*TaggedCommit, e
 		return nil, nil
 	}
 
-	rvt := &TaggedCommit{
+	rvt := &CommitTag{
 		TagName:     ref.Name().Short(),
 		IsAnnotated: annotated,
-		CommitHash:  tc.hash,
-		Date:        tc.taggedTime,
+		CommitHash:  tc.commitHash,
+		TagDate:     tc.tagDate,
 	}
 
 	return rvt, nil
 }
 
-// IterTaggedCommits returns an iterator over all tags resolving to a commit in the repository.
-func IterTaggedCommits(repo *git.Repository) (iter.Seq[TaggedCommit], func() error) {
-	return xit.Perform(func(yield func(TaggedCommit) bool) error {
-		tagIter, err := repo.Tags()
+// IterCommitTags returns an iterator over all tags resolving to a commit in the repository.
+func IterCommitTags(gCx *Context) (iter.Seq[CommitTag], func() error) {
+	return xit.Perform(func(yield func(CommitTag) bool) error {
+		r := gCx.Repository()
+
+		tagIter, err := r.Tags()
 		if err != nil {
 			return fmt.Errorf("list tags: %w", err)
 		}
 
 		walkerFn := func(ref *plumbing.Reference) error {
-			switch tag, err := resolveTag(repo, ref); {
+			switch tag, err := resolveCommitTag(r, ref); {
 			case err != nil:
 				return fmt.Errorf("resolve tag %q: %w", ref.Name().Short(), err)
 			case tag != nil:
@@ -169,52 +170,69 @@ func IterTaggedCommits(repo *git.Repository) (iter.Seq[TaggedCommit], func() err
 		if err := tagIter.ForEach(walkerFn); err != nil {
 			return fmt.Errorf("iterate tags: %w", err)
 		}
+
 		return nil
 	})
 }
 
-// VersionTaggedCommit represents a tagged commit with a tag name formatted as a version.
-type VersionTaggedCommit struct {
-	TaggedCommit
+// VersionTag represents a tagged commit with a tag name formatted as a version.
+type VersionTag struct {
+	CommitTag
 
 	// VersionSpec is the extracted version from the tag.
-	VersionSpec *VersionSpec
+	VersionSpec VersionSpec
 }
 
-func (c VersionTaggedCommit) String() string {
+func (c VersionTag) String() string {
 	return fmt.Sprintf("%s (%s)", c.TagName, c.CommitHash)
 }
 
-// FilterMapVersionTags returns an iterator that yields VersionTaggedCommit objects.
-func FilterMapVersionTags(seq iter.Seq[TaggedCommit]) iter.Seq[VersionTaggedCommit] {
-	return xit.FilterMap2(seq, func(t TaggedCommit) (VersionTaggedCommit, bool) {
+// FilterMapVersionTags returns an iterator that yields VersionTag objects.
+func FilterMapVersionTags(seq iter.Seq[CommitTag]) iter.Seq[VersionTag] {
+	return xit.FilterMap2(seq, func(t CommitTag) (VersionTag, bool) {
 		vs, err := ParseVersionSpec(t.TagName)
 		if err != nil {
-			return VersionTaggedCommit{}, false
+			return VersionTag{}, false
 		}
 
-		vt := VersionTaggedCommit{
-			TaggedCommit: t,
-			VersionSpec:  vs,
+		vt := VersionTag{
+			CommitTag:   t,
+			VersionSpec: vs,
 		}
 
 		return vt, true
 	})
 }
 
+// IterVersionTags returns an iterator over all version tags in the repository.
+func IterVersionTags(gCx *Context, scope *Scope) (iter.Seq[VersionTag], func() error) {
+	// Iterate over all tags resolving to a commit.
+	taggedCommits, doneFn := IterCommitTags(gCx)
+
+	// Map tagged commits to version tags.
+	versionTags := FilterMapVersionTags(taggedCommits)
+
+	// Filter version tags by scope if given.
+	if scope != nil {
+		versionTags = FilterVersionScope(versionTags, *scope)
+	}
+
+	return versionTags, doneFn
+}
+
 // FilterVersionScope returns an iterator that yields only the tags
 // whose scope matches the given Scope.
-func FilterVersionScope(seq iter.Seq[VersionTaggedCommit], scope Scope) iter.Seq[VersionTaggedCommit] {
-	return xit.Filter(seq, func(tag VersionTaggedCommit) bool {
+func FilterVersionScope(seq iter.Seq[VersionTag], scope Scope) iter.Seq[VersionTag] {
+	return xit.Filter(seq, func(tag VersionTag) bool {
 		return scope.Matches(tag.VersionSpec.Scope)
 	})
 }
 
-// VersionTagMap maps git plumbing.Hash to one or more VersionTaggedCommit.
-type VersionTagMap map[plumbing.Hash][]VersionTaggedCommit
+// VersionTagMap maps git plumbing.Hash to one or more VersionTag.
+type VersionTagMap map[plumbing.Hash][]VersionTag
 
 // CollectVersionTagMap collects all version tags in the given iterator into a map.
-func CollectVersionTagMap(seq iter.Seq[VersionTaggedCommit]) (out VersionTagMap) {
+func CollectVersionTagMap(seq iter.Seq[VersionTag]) (out VersionTagMap) {
 	out = make(VersionTagMap)
 	for tag := range seq {
 		out[tag.CommitHash] = append(out[tag.CommitHash], tag)
@@ -225,20 +243,11 @@ func CollectVersionTagMap(seq iter.Seq[VersionTaggedCommit]) (out VersionTagMap)
 
 // NewVersionTagMapFromRepo returns a map of git plumbing.Hash pointing to one or
 // more annotated and unannotated tag names.
-func NewVersionTagMapFromRepo(repo *git.Repository, scope *Scope) (out VersionTagMap, err error) {
-	// Iterate over all tags resolving to a commit.
-	taggedCommits, doneFn := IterTaggedCommits(repo)
-
-	// Map tagged commits to version tags.
-	versionTags := FilterMapVersionTags(taggedCommits)
-
-	// Filter version tags by scope if given.
-	if scope != nil {
-		versionTags = FilterVersionScope(versionTags, *scope)
-	}
+func NewVersionTagMapFromRepo(gCx *Context, scope *Scope) (out VersionTagMap, err error) {
+	versionTagsIter, doneFn := IterVersionTags(gCx, scope)
 
 	// Collect version tags into a map.
-	out = CollectVersionTagMap(versionTags)
+	out = CollectVersionTagMap(versionTagsIter)
 
 	if err := doneFn(); err != nil {
 		return nil, fmt.Errorf("collect tags: %w", err)

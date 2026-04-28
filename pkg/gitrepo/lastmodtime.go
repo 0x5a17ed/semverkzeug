@@ -28,7 +28,7 @@ import (
 )
 
 var (
-	ErrNotDirty = errors.New("repository is clean")
+	ErrWorktreeClean = errors.New("repository worktree is clean")
 )
 
 type findMTimeResult struct {
@@ -68,7 +68,7 @@ func findMTimeStep(vfs billy.Filesystem, fp string) (findMTimeResult, error) {
 	}, nil
 }
 
-// FindPathMTime returns the modification time associated with fp in the working tree.
+// findMTimePath returns the modification time associated with fp in the working tree.
 //
 // For existing paths, it returns the path's own mtime.
 //
@@ -82,7 +82,7 @@ func findMTimeStep(vfs billy.Filesystem, fp string) (findMTimeResult, error) {
 // stale metadata from filesystem attribute caches.
 //
 // The returned time is normalized to UTC.
-func FindPathMTime(vfs billy.Filesystem, fp string) (time.Time, error) {
+func findMTimePath(vfs billy.Filesystem, fp string) (time.Time, error) {
 	for {
 		result, err := findMTimeStep(vfs, fp)
 		if err != nil {
@@ -97,16 +97,17 @@ func FindPathMTime(vfs billy.Filesystem, fp string) (time.Time, error) {
 	}
 }
 
-// FindWorktreeMTime returns the last modification time of the files in the working tree.
-func FindWorktreeMTime(wt *git.Worktree, st git.Status) (*time.Time, error) {
+// findWorktreeMTime determines the latest modification time in the working tree based on its status.
+func findWorktreeMTime(wt *git.Worktree, st git.Status) (*time.Time, error) {
 	var latestChange time.Time
 
 	for fp, fst := range st {
+		// Ignore unmodified files.
 		if fst.Worktree == git.Unmodified && fst.Staging == git.Unmodified {
 			continue
 		}
 
-		switch mtime, err := FindPathMTime(wt.Filesystem, fp); {
+		switch mtime, err := findMTimePath(wt.Filesystem, fp); {
 		case err != nil:
 			return nil, err
 		case mtime.After(latestChange):
@@ -115,7 +116,22 @@ func FindWorktreeMTime(wt *git.Worktree, st git.Status) (*time.Time, error) {
 	}
 
 	if latestChange.IsZero() {
-		return nil, ErrNotDirty
+		return nil, ErrWorktreeClean
 	}
 	return &latestChange, nil
+}
+
+// FindWorktreeMTime returns the last modification time of the files in the working tree.
+func FindWorktreeMTime(cx *Context) (*time.Time, error) {
+	wt, err := cx.LoadWorktree()
+	if err != nil {
+		return nil, fmt.Errorf("load worktree: %w", err)
+	}
+
+	st, err := BuildWorktreeStatus(cx)
+	if err != nil {
+		return nil, fmt.Errorf("read status: %w", err)
+	}
+
+	return findWorktreeMTime(wt, st)
 }

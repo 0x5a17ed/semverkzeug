@@ -102,11 +102,11 @@ type VersionSpec struct {
 	Version semver.Version
 }
 
-func (s VersionSpec) String() string {
-	if s.Scope.IsRoot() {
-		return s.Prefix + s.Version.String()
+func (s VersionSpec) String() (v string) {
+	if !s.Scope.IsRoot() {
+		v = s.Scope.String() + "/"
 	}
-	return s.Scope.String() + "/" + s.Prefix + s.Version.String()
+	return v + s.Prefix + s.Version.String()
 }
 
 func (s VersionSpec) WithScope(scope Scope) VersionSpec {
@@ -117,24 +117,40 @@ func (s VersionSpec) WithScope(scope Scope) VersionSpec {
 	}
 }
 
+func (s VersionSpec) WithPrefix(prefix string) VersionSpec {
+	return VersionSpec{
+		Scope:   s.Scope,
+		Prefix:  prefix,
+		Version: s.Version,
+	}
+}
+
+func (s VersionSpec) WithVersion(v semver.Version) VersionSpec {
+	return VersionSpec{
+		Scope:   s.Scope,
+		Prefix:  s.Prefix,
+		Version: v,
+	}
+}
+
 // ParseVersionSpec parses a version tag string into a VersionSpec.
-func ParseVersionSpec(original string) (*VersionSpec, error) {
+func ParseVersionSpec(original string) (VersionSpec, error) {
 	m := parse(original)
 	if m == nil {
-		return nil, fmt.Errorf("%#q: invalid version tag format", original)
+		return VersionSpec{}, fmt.Errorf("%#q: invalid version tag format", original)
 	}
 
 	s, err := ParseScope(m["scope"])
 	if err != nil {
-		return nil, fmt.Errorf("%#q: invalid scope format", original)
+		return VersionSpec{}, fmt.Errorf("%#q: invalid scope format", original)
 	}
 
 	v, err := semver.NewVersion(m["version"])
 	if err != nil {
-		return nil, fmt.Errorf("%#q: invalid version tag format", original)
+		return VersionSpec{}, fmt.Errorf("%#q: invalid version tag format", original)
 	}
 
-	vt := &VersionSpec{
+	vt := VersionSpec{
 		Scope:   s,
 		Prefix:  m["prefix"],
 		Version: *v,

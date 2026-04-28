@@ -19,8 +19,6 @@ package cli
 import (
 	"context"
 
-	"github.com/go-git/go-git/v5"
-
 	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 )
 
@@ -31,12 +29,12 @@ const (
 	ScopeKey
 )
 
-func WithGitRepository(ctx context.Context, repo *git.Repository) context.Context {
+func WithGitContext(ctx context.Context, repo *gitrepo.Context) context.Context {
 	return context.WithValue(ctx, GitRepositoryKey, repo)
 }
 
-func GetGitRepository(ctx context.Context) (repo *git.Repository, ok bool) {
-	repo, ok = ctx.Value(GitRepositoryKey).(*git.Repository)
+func GetGitContext(ctx context.Context) (repo *gitrepo.Context, ok bool) {
+	repo, ok = ctx.Value(GitRepositoryKey).(*gitrepo.Context)
 	return
 }
 

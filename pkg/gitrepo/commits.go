@@ -99,7 +99,9 @@ func abbreviateCommitByScanning(r *git.Repository, h plumbing.Hash) (string, err
 }
 
 // AbbreviatedCommitHash returns a shortened hash of the commit that uniquely identifies the commit.
-func AbbreviatedCommitHash(r *git.Repository, h plumbing.Hash) (string, error) {
+func AbbreviatedCommitHash(gCx *Context, h plumbing.Hash) (string, error) {
+	r := gCx.Repository()
+
 	if _, err := r.CommitObject(h); err != nil {
 		return "", fmt.Errorf("resolve target commit %s: %w", h, err)
 	}

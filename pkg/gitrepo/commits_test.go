@@ -1,4 +1,4 @@
-package gitrepo
+package gitrepo_test
 
 import (
 	"fmt"
@@ -7,15 +7,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/testhelper"
+	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/pkg/internal/gitfixture"
 )
 
 func TestAbbreviatedCommitHash(t *testing.T) {
-	repo := testhelper.RepoEmpty(t)
+	repo := gitfixture.RepoEmpty(t)
 
-	h := testhelper.CommitFile(t, repo, "test.txt", "test")
+	h := gitfixture.CommitFile(t, repo, "test.txt", "test")
 
-	got, err := AbbreviatedCommitHash(repo.Repo, h)
+	got, err := gitrepo.AbbreviatedCommitHash(repo, h)
 	require.NoError(t, err)
 
 	assert.Equal(t, fmt.Sprintf("%s", h.String()[:8]), got)

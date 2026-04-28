@@ -26,7 +26,105 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
-func SelectHighestVersionTag(tags []VersionTaggedCommit) VersionTaggedCommit {
+// Guide describes the relationship between a reference (typically
+// HEAD) and the highest version tag it shares history with.
+type Guide struct {
+	// Commit is the commit at the given ref.
+	Commit *object.Commit
+
+	// Tags is the set of version tags that share the highest
+	// reachable version (one entry in the common case, more if
+	// several tags name the same version).
+	Tags []VersionTag
+
+	// MergeBase is the most recent commit shared between Commit and
+	// the winning tag's commit.  Equal to Commit when the tag is on
+	// Commit itself, or to the tag's commit on linear ancestry; the
+	// branch point for tags that live on side branches.  Nil when no
+	// reachable tag was found.
+	MergeBase *object.Commit
+
+	// Depth is the number of commits reachable from Commit but not
+	// from MergeBase — equivalent to `git rev-list --count
+	// MergeBase..Commit`.  Zero when Commit is at MergeBase.  When
+	// no tag was found, Depth is the total number of commits
+	// reachable from Commit.
+	Depth int
+}
+
+func (g Guide) String() string {
+	commitString := "nil"
+	if g.HasCommit() {
+		commitString = fmt.Sprintf("(%s)", g.Commit.Hash)
+	}
+
+	mergeBaseString := "nil"
+	if g.MergeBase != nil {
+		mergeBaseString = fmt.Sprintf("(%s)", g.MergeBase.Hash)
+	}
+
+	return fmt.Sprintf("Guide{Commit: %s, MergeBase: %s, Depth: %d}", commitString, mergeBaseString, g.Depth)
+}
+
+// HasCommit checks if the Guide has a valid non-nil commit with a non-zero hash.
+func (g Guide) HasCommit() bool {
+	return g.Commit != nil && !g.Commit.Hash.IsZero()
+}
+
+// NewGuide finds the highest version tag whose commit shares
+// history with ref, then describes how far ref has diverged from
+// that tag's branch point.
+//
+// Tags whose commit is not reachable from any local branch are
+// skipped to avoid picking up stranded or experimental work.  Tags
+// that sit "in the future" of ref (ref is a strict ancestor of the
+// tag) are also skipped — they describe versions that don't exist
+// yet from ref's perspective.
+func NewGuide(gCx *Context, ref *plumbing.Reference, scope Scope) (*Guide, error) {
+	r := gCx.Repository()
+
+	if ref == nil {
+		return &Guide{}, nil
+	}
+
+	head, err := r.CommitObject(ref.Hash())
+	if err != nil {
+		return nil, fmt.Errorf("resolve commit object: %w", err)
+	}
+
+	tm, err := NewVersionTagMapFromRepo(gCx, &scope)
+	if err != nil {
+		return nil, fmt.Errorf("build version tag map: %w", err)
+	}
+
+	if len(tm) > 0 {
+		guide, err := selectReachableTag(r, head, tm)
+		if err != nil {
+			return nil, fmt.Errorf("select reachable tag: %w", err)
+		}
+		if guide != nil {
+			return guide, nil
+		}
+	}
+
+	// No reachable version tag.  Depth becomes "everything reachable
+	// from ref" so callers can tell whether any history exists.
+	depth, err := countReachable(head)
+	if err != nil {
+		return nil, fmt.Errorf("count reachable commits: %w", err)
+	}
+
+	guide := &Guide{
+		Commit: head,
+		Depth:  depth,
+	}
+
+	return guide, nil
+}
+
+// SelectHighestVersionTag returns the highest version tag from a list of
+// VersionTag based on version and metadata hierarchy.
+func SelectHighestVersionTag(tags []VersionTag) VersionTag {
 	cp := slices.Clone(tags)
 
 	sort.Slice(cp, func(i, j int) bool {
@@ -46,8 +144,8 @@ func SelectHighestVersionTag(tags []VersionTaggedCommit) VersionTaggedCommit {
 		}
 
 		// Prefer tags with a later date.
-		if !a.Date.Equal(b.Date) {
-			return a.Date.After(b.Date)
+		if !a.TagDate.Equal(b.TagDate) {
+			return a.TagDate.After(b.TagDate)
 		}
 
 		// Use lexicographic order for tags with the same version as the last tie-breaker.
@@ -57,67 +155,153 @@ func SelectHighestVersionTag(tags []VersionTaggedCommit) VersionTaggedCommit {
 	return cp[0]
 }
 
-// Guide describes the distance in Depth of the value in Hash to
-// the commit with the given Tags or the initial commit if there
-// are no tags.
-type Guide struct {
-	// Commit is the commit at the given Hash.
-	Commit *object.Commit
+// selectReachableTag picks the highest-semver tag from tm whose
+// commit shares non-trivial history with head, applying the
+// tip-filter and the "future tag" guard.  Returns nil when no tag
+// qualifies (caller should fall back to the no-tag path).
+func selectReachableTag(
+	repo *git.Repository,
+	head *object.Commit,
+	tm VersionTagMap,
+) (*Guide, error) {
+	tipSet, err := buildTipSet(repo)
+	if err != nil {
+		return nil, fmt.Errorf("build tip set: %w", err)
+	}
 
-	// Tags is the list of tags that point to the given commit.
-	Tags []VersionTaggedCommit
+	candidates := flattenTagMap(tm)
+	sort.Slice(candidates, func(i, j int) bool {
+		return candidates[i].VersionSpec.Version.GreaterThan(&candidates[j].VersionSpec.Version)
+	})
 
-	// Depth is the distance in commits from the given Hash to the commit with the given Tags.
-	Depth int
+	for _, vtc := range candidates {
+		// Skip tags on stranded commits when we have a tip-set to
+		// compare against.  An empty tip-set means the repo has no
+		// branches; fall back to considering every tag in that case.
+		if len(tipSet) > 0 && !tipSet[vtc.CommitHash] {
+			continue
+		}
 
-	r *git.Repository
+		tagCommit, err := repo.CommitObject(vtc.CommitHash)
+		if err != nil {
+			return nil, fmt.Errorf("resolve tag commit %s: %w", vtc.CommitHash, err)
+		}
+
+		bases, err := head.MergeBase(tagCommit)
+		if err != nil {
+			return nil, fmt.Errorf("compute merge-base: %w", err)
+		}
+		if len(bases) == 0 {
+			continue
+		}
+		mergeBase := bases[0]
+
+		// Skip tags from head's "future": head is a strict ancestor
+		// of the tag, not at it.
+		if mergeBase.Hash == head.Hash && head.Hash != vtc.CommitHash {
+			continue
+		}
+
+		depth, err := commitsAhead(head, mergeBase)
+		if err != nil {
+			return nil, fmt.Errorf("count divergence: %w", err)
+		}
+
+		return &Guide{
+			Commit:    head,
+			Tags:      collectSameVersion(candidates, vtc.VersionSpec),
+			MergeBase: mergeBase,
+			Depth:     depth,
+		}, nil
+	}
+
+	return nil, nil
 }
 
-func (g Guide) HasCommit() bool {
-	return g.Commit != nil && !g.Commit.Hash.IsZero()
+func flattenTagMap(tm VersionTagMap) []VersionTag {
+	out := make([]VersionTag, 0, len(tm))
+	for _, tags := range tm {
+		out = append(out, tags...)
+	}
+	return out
 }
 
-// NewGuide looks at the given git repository and gives the given
-// plumbing.Reference ref a human-readable name based on another
-// available ref.
-func NewGuide(repo *git.Repository, ref *plumbing.Reference, scope Scope) (*Guide, error) {
-	guide := &Guide{r: repo}
-
-	if ref == nil {
-		return guide, nil
+func collectSameVersion(candidates []VersionTag, spec VersionSpec) []VersionTag {
+	var out []VersionTag
+	for _, c := range candidates {
+		if c.VersionSpec.Version.Equal(&spec.Version) {
+			out = append(out, c)
+		}
 	}
+	return out
+}
 
-	commit, err := repo.CommitObject(ref.Hash())
+// buildTipSet returns the set of commit hashes reachable from any
+// local branch.  An empty set means the repo has no branches at
+// all, in which case callers should treat every tag as in-scope.
+func buildTipSet(repo *git.Repository) (map[plumbing.Hash]bool, error) {
+	set := map[plumbing.Hash]bool{}
+
+	branchIter, err := repo.Branches()
 	if err != nil {
-		return nil, fmt.Errorf("resolve commit object: %w", err)
+		return nil, fmt.Errorf("list branches: %w", err)
 	}
-	guide.Commit = commit
 
-	tm, err := NewVersionTagMapFromRepo(repo, &scope)
+	err = branchIter.ForEach(func(ref *plumbing.Reference) error {
+		commit, cErr := repo.CommitObject(ref.Hash())
+		if cErr != nil {
+			// Branches that don't resolve to a commit (broken refs)
+			// don't contribute to reachability.
+			return nil
+		}
+		iter := object.NewCommitPreorderIter(commit, set, nil)
+		return iter.ForEach(func(c *object.Commit) error {
+			set[c.Hash] = true
+			return nil
+		})
+	})
 	if err != nil {
-		return nil, fmt.Errorf("build version tag map: %w", err)
+		return nil, fmt.Errorf("walk branches: %w", err)
 	}
 
-	// Follow the parents until we find a version tag.
-	for c := guide.Commit; c != nil; {
-		if ts, ok := tm[c.Hash]; ok && len(ts) > 0 {
-			guide.Tags = ts
-			return guide, nil
-		}
+	return set, nil
+}
 
-		guide.Depth++
-
-		if c.NumParents() == 0 {
-			// No parents left, so we're at the root'.
-			break
-		}
-
-		// Follow the first parent.
-		if c, err = c.Parent(0); err != nil {
-			return nil, fmt.Errorf("read first parent: %w", err)
-		}
+// commitsAhead counts commits reachable from head but not from
+// mergeBase. Same as `git rev-list --count mergeBase..head`.
+func commitsAhead(head, mergeBase *object.Commit) (int, error) {
+	if head.Hash == mergeBase.Hash {
+		return 0, nil
 	}
 
-	// No version tag was found.
-	return guide, nil
+	excluded := map[plumbing.Hash]bool{}
+	mergeBaseIter := object.NewCommitPreorderIter(mergeBase, nil, nil)
+	if err := mergeBaseIter.ForEach(func(c *object.Commit) error {
+		excluded[c.Hash] = true
+		return nil
+	}); err != nil {
+		return 0, fmt.Errorf("walk merge-base ancestors: %w", err)
+	}
+
+	count := 0
+	headIter := object.NewCommitPreorderIter(head, excluded, nil)
+	if err := headIter.ForEach(func(c *object.Commit) error {
+		count++
+		return nil
+	}); err != nil {
+		return 0, fmt.Errorf("walk head ancestors: %w", err)
+	}
+	return count, nil
+}
+
+// countReachable counts every commit reachable from the head, including
+// the head itself.
+func countReachable(head *object.Commit) (int, error) {
+	count := 0
+	iter := object.NewCommitPreorderIter(head, nil, nil)
+	err := iter.ForEach(func(c *object.Commit) error {
+		count++
+		return nil
+	})
+	return count, err
 }

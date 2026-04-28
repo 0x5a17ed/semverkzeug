@@ -100,7 +100,7 @@ func TestParseVersionTag(t *testing.T) {
 			// Assert
 			if tt.wantErr {
 				assert.Error(t, err)
-				assert.Nil(t, got)
+				assert.Zero(t, got)
 				return
 			}
 

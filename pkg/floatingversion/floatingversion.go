@@ -39,29 +39,28 @@ func formatMTime(t *time.Time) string {
 
 // Describe returns a floating version string for the given reference.
 func Describe(
-	repo *git.Repository,
+	gCx *gitrepo.Context,
 	ref *plumbing.Reference,
 	scope gitrepo.Scope,
-) (vs *gitrepo.LatestVersion, err error) {
-	wt, status, err := gitrepo.GetStatus(repo)
-	if err != nil {
-		return nil, fmt.Errorf("get worktree status: %w", err)
-	}
-
-	mtime, err := gitrepo.FindWorktreeMTime(wt, status)
-	switch {
-	case errors.Is(err, gitrepo.ErrNotDirty):
-		err = nil // Ignore.
-	case err != nil:
-		return nil, fmt.Errorf("find worktree mtime: %w", err)
-	}
-
-	if vs, err = gitrepo.FindLatestVersion(repo, ref, scope); err != nil {
+) (vs *gitrepo.VersionState, err error) {
+	if vs, err = gitrepo.FindLatestVersion(gCx, ref, scope); err != nil {
 		return nil, fmt.Errorf("find latest version: %w", err)
 	}
 
+	mtime, err := gitrepo.FindWorktreeMTime(gCx)
+	switch {
+	case errors.Is(err, git.ErrIsBareRepository):
+		err = nil // Ignore.
+	case errors.Is(err, gitrepo.ErrWorktreeClean):
+		err = nil // Ignore.
+	case err != nil:
+		return nil, fmt.Errorf("find worktree mtime: %w", err)
+	default:
+		// Fall through.
+	}
+
 	// Return the latest version if there are no changes.
-	if mtime == nil && vs.Guide.Depth == 0 {
+	if mtime == nil && vs.IsPure() {
 		return vs, nil
 	}
 
@@ -71,15 +70,17 @@ func Describe(
 	}
 
 	// Use last commit time as the timestamp if there are no changes.
-	if mtime == nil && vs.Guide.HasCommit() {
+	if mtime == nil && vs.HasGuide() && vs.Guide.HasCommit() {
 		mtime = &vs.Guide.Commit.Committer.When
 	}
 
 	// Set the prerelease version to "dev" and the timestamp.
-	prerelease := fmt.Sprintf("dev")
+	devCounter := "0"
 	if mtime != nil {
-		prerelease += "." + formatMTime(mtime)
+		devCounter = formatMTime(mtime)
 	}
+	prerelease := fmt.Sprintf("dev.%s", devCounter)
+
 	vs.Spec.Version, err = vs.Spec.Version.SetPrerelease(prerelease)
 	if err != nil {
 		return nil, err

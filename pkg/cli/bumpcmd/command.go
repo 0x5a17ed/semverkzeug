@@ -44,18 +44,18 @@ var (
 )
 
 func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
-	repo, ok := cli.GetGitRepository(ctx)
+	gcx, ok := cli.GetGitContext(ctx)
 	if !ok {
 		return git.ErrRepositoryNotExists
 	}
 
-	head, err := repo.Head()
+	head, err := gcx.Repository().Head()
 	if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
 		return err
 	}
 
 	scope, _ := cli.GetScope(ctx)
-	if _, err := bumper.CreateTag(repo, head, partMap[args[0]], scope); err != nil {
+	if _, err := bumper.CreateTag(gcx, head, partMap[args[0]], scope); err != nil {
 		return err
 	}
 

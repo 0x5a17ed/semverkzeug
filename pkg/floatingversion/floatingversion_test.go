@@ -18,175 +18,52 @@ package floatingversion_test
 
 import (
 	"errors"
-	"fmt"
 	"testing"
-	"time"
 
-	"github.com/go-git/go-billy/v5"
-	"github.com/go-git/go-billy/v5/memfs"
-	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/storage/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0x5a17ed/semverkzeug/pkg/floatingversion"
 	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/pkg/internal/gitfixture"
 )
 
-var signature = &object.Signature{
-	Name:  "user",
-	Email: "user@example.test",
-	When:  time.Now(),
-}
+type repositoryProvider func(t *testing.T) *gitrepo.Context
 
-func writeFile(t *testing.T, fs billy.Filesystem, name string, data []byte) {
-	f, err := fs.Create(name)
-	require.NoError(t, err)
-	defer func() { require.NoError(t, f.Close()) }()
-
-	_, err = f.Write(data)
-	require.NoError(t, err)
-}
-
-func emptyFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	storer := memory.NewStorage()
-	fs := memfs.New()
-
-	repo, err := git.Init(storer, fs)
-	require.NoError(t, err)
-	return fs, repo
-}
-
-func emptyDirtyFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	fs, repo := emptyFixture(t)
-
-	writeFile(t, fs, "foo", []byte("asdsdadsa"))
-
-	return fs, repo
-}
-
-func oneCommitFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	fs, repo := emptyDirtyFixture(t)
-
-	wt, err := repo.Worktree()
-	require.NoError(t, err)
-
-	err = wt.AddWithOptions(&git.AddOptions{Path: "foo"})
-	require.NoError(t, err)
-
-	_, err = wt.Commit("asd", &git.CommitOptions{Author: signature, Committer: signature})
-	require.NoError(t, err)
-
-	return fs, repo
-}
-
-func oneCommitFileDeletedFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	fs, repo := emptyDirtyFixture(t)
-
-	wt, err := repo.Worktree()
-	require.NoError(t, err)
-
-	err = wt.AddWithOptions(&git.AddOptions{Path: "foo"})
-	require.NoError(t, err)
-
-	_, err = wt.Commit("asd", &git.CommitOptions{Author: signature, Committer: signature})
-	require.NoError(t, err)
-
-	err = fs.Remove("/foo")
-	require.NoError(t, err)
-
-	return fs, repo
-}
-
-func oneCommitDirtyFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	fs, repo := oneCommitFixture(t)
-
-	writeFile(t, fs, "foo", []byte("djgfshgjkdjfhkdf"))
-
-	return fs, repo
-}
-
-func oneTaggedCommitRepositoryFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	fs, repo := oneCommitFixture(t)
-
-	head, err := repo.Head()
-	require.NoError(t, err)
-
-	_, err = repo.CreateTag("v0.1.0", head.Hash(), &git.CreateTagOptions{
-		Tagger: signature, Message: "version v0.1.0",
-	})
-	require.NoError(t, err)
-
-	return fs, repo
-}
-
-func oneTaggedDirtyFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	fs, repo := oneTaggedCommitRepositoryFixture(t)
-
-	writeFile(t, fs, "foo", []byte("djgfshgjkdjfhkdf"))
-
-	return fs, repo
-}
-
-func oneTagOneCommitFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	fs, repo := oneTaggedDirtyFixture(t)
-
-	wt, err := repo.Worktree()
-	require.NoError(t, err)
-
-	err = wt.AddWithOptions(&git.AddOptions{Path: "foo"})
-	require.NoError(t, err)
-
-	_, err = wt.Commit("asd", &git.CommitOptions{Author: signature, Committer: signature})
-	require.NoError(t, err)
-
-	return fs, repo
-}
-
-func oneTagOneCommitDirtyFixture(t *testing.T) (billy.Filesystem, *git.Repository) {
-	fs, repo := oneTagOneCommitFixture(t)
-
-	writeFile(t, fs, "foo", []byte("ghksdfjghksjdfhd"))
-
-	return fs, repo
-}
-
-type repositoryProvider func(t *testing.T) (billy.Filesystem, *git.Repository)
-
-func TestGetVersion(t *testing.T) {
-	tests := []struct {
-		name    string
+func TestDescribe(t *testing.T) {
+	type args struct {
 		repo    repositoryProvider
 		wantVer string
-		wantErr assert.ErrorAssertionFunc
+	}
+
+	tests := []struct {
+		name string
+		args args
 	}{
-		{"empty", emptyFixture, `v0\.0\.1-dev\.0`, assert.NoError},
-		{"empty-dirty", emptyDirtyFixture, `v0\.0\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
-		{"one-commit-no-tag", oneCommitFixture, `v0\.0\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
-		{"one-commit-no-tag-dirty", oneCommitDirtyFixture, `v0\.0\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
-		{"one-commit-no-tag-deleted-file", oneCommitFileDeletedFixture, `v0\.0\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
-		{"one-tag", oneTaggedCommitRepositoryFixture, `v0\.1\.0`, assert.NoError},
-		{"one-tag-dirty", oneTaggedDirtyFixture, `v0\.1\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
-		{"one-tag-one-commit", oneTagOneCommitFixture, `v0\.1\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
-		{"one-tag-one-commit-dirty", oneTagOneCommitDirtyFixture, `v0\.1\.1-dev\.\d{6}T\d{8}Z`, assert.NoError},
+		{"empty", args{repo: gitfixture.RepoEmpty, wantVer: `v0\.0\.1-dev\.0`}},
+		{"empty-dirty", args{repo: gitfixture.RepoWithNoCommitsNoTagsDirty, wantVer: `v0\.0\.1-dev\.\d{6}T\d{8}Z`}},
+		{"one-commit-no-tag-clean", args{repo: gitfixture.RepoWithOneCommitNoTagsClean, wantVer: `v0\.0\.1-dev\.\d{6}T\d{8}Z`}},
+		{"one-commit-no-tag-dirty", args{repo: gitfixture.RepoWithOneCommitNoTagsDirty, wantVer: `v0\.0\.1-dev\.\d{6}T\d{8}Z`}},
+		{"one-commit-no-tag-file-deleted", args{repo: gitfixture.RepoWithOneCommitNoTagsFileDeleted, wantVer: `v0\.0\.1-dev\.\d{6}T\d{8}Z`}},
+		{"one-tag-clean", args{repo: gitfixture.RepoWithOneCommitOneTagClean, wantVer: `v0\.1\.0`}},
+		{"one-tag-dirty", args{repo: gitfixture.RepoWithOneCommitOneTagDirty, wantVer: `v0\.1\.1-dev\.\d{6}T\d{8}Z`}},
+		{"one-one-commit-past-one-tag-clean", args{repo: gitfixture.RepoWithTwoCommitsOneTagClean, wantVer: `v0\.1\.1-dev\.\d{6}T\d{8}Z`}},
+		{"one-one-commit-past-one-tag-dirty", args{repo: gitfixture.RepoWithTwoCommitsOneTagDirty, wantVer: `v0\.1\.1-dev\.\d{6}T\d{8}Z`}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, repo := tt.repo(t)
+			cx := tt.args.repo(t)
 
-			head, err := repo.Head()
+			head, err := cx.Repository().Head()
 			if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
 				require.NoError(t, err)
 			}
 
-			gotVs, err := floatingversion.Describe(repo, head, gitrepo.RootScope())
-			if !tt.wantErr(t, err, fmt.Sprintf("Get(%v)", tt.repo)) {
-				return
-			}
+			gotVs, err := floatingversion.Describe(cx, head, gitrepo.RootScope())
+			require.NoError(t, err)
 
-			assert.Regexp(t, tt.wantVer, gotVs.String())
+			assert.Regexp(t, tt.args.wantVer, gotVs.String())
 		})
 	}
 }

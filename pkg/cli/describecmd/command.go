@@ -36,25 +36,25 @@ var (
 )
 
 func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
-	repo, ok := cli.GetGitRepository(ctx)
+	gCx, ok := cli.GetGitContext(ctx)
 	if !ok {
 		return git.ErrRepositoryNotExists
 	}
 
-	head, err := repo.Head()
+	head, err := gCx.Repository().Head()
 	if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
 		return err
 	}
 
 	scope, _ := cli.GetScope(ctx)
-	vs, err := floatingversion.Describe(repo, head, scope)
+	vs, err := floatingversion.Describe(gCx, head, scope)
 	if err != nil {
 		return err
 	}
 
 	// Add the commit hash to the version if requested.
 	if withCommitHash && vs.Guide.HasCommit() {
-		abbreviatedHash, err := gitrepo.AbbreviatedCommitHash(repo, vs.Guide.Commit.Hash)
+		abbreviatedHash, err := gitrepo.AbbreviatedCommitHash(gCx, vs.Guide.Commit.Hash)
 		if err != nil {
 			return fmt.Errorf("abbreviate commit hash: %w", err)
 		}

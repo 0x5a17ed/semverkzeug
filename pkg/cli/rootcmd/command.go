@@ -18,6 +18,7 @@ package rootcmd
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -41,7 +42,7 @@ var (
 //
 // It returns the root scope for root-scoped operation, or when no
 // worktree is available.
-func scopeForRepoPath(repo *git.Repository, p string) (gitrepo.Scope, error) {
+func scopeForRepoPath(repo *gitrepo.Context, p string) (gitrepo.Scope, error) {
 	if p == "" {
 		return gitrepo.RootScope(), nil
 	}
@@ -50,12 +51,12 @@ func scopeForRepoPath(repo *git.Repository, p string) (gitrepo.Scope, error) {
 	// path math is stable regardless of the current working directory.
 	absPath, err := filepath.Abs(p)
 	if err != nil {
-		return gitrepo.Scope{}, err
+		return gitrepo.Scope{}, fmt.Errorf("resolve absolute path: %w", err)
 	}
 
 	// Discover the repository root from the checked-out worktree.
 	// If no worktree is available, fall back to the root scope.
-	wt, err := repo.Worktree()
+	wt, err := repo.LoadWorktree()
 	if err != nil {
 		return gitrepo.RootScope(), nil
 	}
@@ -88,20 +89,20 @@ func persistentPreRunE(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-	repo, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{
-		DetectDotGit:          true,
-		EnableDotGitCommonDir: true,
-	})
-	if errors.Is(err, git.ErrRepositoryNotExists) {
+	gCx, err := gitrepo.NewContextFromPath(repoPath)
+	switch {
+	case errors.Is(err, git.ErrRepositoryNotExists):
 		return nil
+	case err != nil:
+		return fmt.Errorf("create git context: %w", err)
 	}
 
-	scope, err := scopeForRepoPath(repo, repoPath)
+	scope, err := scopeForRepoPath(gCx, repoPath)
 	if err != nil {
 		return err
 	}
 
-	ctx := cli.WithGitRepository(cmd.Context(), repo)
+	ctx := cli.WithGitContext(cmd.Context(), gCx)
 	ctx = cli.WithScope(ctx, scope)
 	cmd.SetContext(ctx)
 	return

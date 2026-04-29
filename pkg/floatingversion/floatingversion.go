@@ -104,7 +104,7 @@ func Describe(
 
 	spec.Version, err = spec.Version.SetPrerelease(prereleaseLabel)
 	if err != nil {
-		return gitrepo.VersionSpec{}, err
+		return gitrepo.VersionSpec{}, fmt.Errorf("set prerelease: %w", err)
 	}
 
 	return spec, nil

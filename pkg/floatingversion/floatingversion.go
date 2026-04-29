@@ -19,6 +19,7 @@ package floatingversion
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -26,7 +27,27 @@ import (
 	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 )
 
+var devLabelRegexp = regexp.MustCompile(`(^|\.)dev(\.[0-9][0-9A-Za-z]*)*(\.|$)`)
+
+func upsertDev(pre, newDev string) string {
+	m := devLabelRegexp.FindStringSubmatchIndex(pre)
+	if m == nil {
+		if pre == "" {
+			return newDev
+		}
+		return pre + "." + newDev
+	}
+
+	// m[3] = end of left boundary; m[6] = start of right boundary.
+	// Slicing through m[6] keeps the trailing "." (or empty) intact.
+	return pre[:m[3]] + newDev + pre[m[6]:]
+}
+
 func formatMTime(t *time.Time) string {
+	if t == nil {
+		return "0"
+	}
+
 	ut := t.UTC()
 
 	return fmt.Sprintf(
@@ -55,29 +76,33 @@ func Describe(
 
 	spec := gitrepo.LatestSpec(guide)
 
-	// Return the latest version if there are no changes.
-	if mtime == nil && guide.IsPure() {
-		return spec, nil
+	if mtime == nil {
+		// Return the latest version if there are no changes since the last tag.
+		if guide.IsPure() {
+			return spec, nil
+		}
+
+		// Try filling mtime from the timestamp of the last commit.
+		if guide.HasCommit() {
+			mtime = &guide.Commit.Committer.When
+		}
+
+		// mtime still can be nil here, if the repo is empty, for example.
 	}
 
-	// Bump the patch version if there are no pre-releases.
-	if spec.Version.Prerelease() == "" {
+	prereleaseLabel := spec.Version.Prerelease()
+
+	// Bump the patch version if the spec is not a pre-release yet.
+	if prereleaseLabel == "" {
 		spec.Version = spec.Version.IncPatch()
 	}
 
-	// Use last commit time as the timestamp if there are no changes.
-	if mtime == nil && guide.HasCommit() {
-		mtime = &guide.Commit.Committer.When
-	}
-
 	// Set the prerelease version to "dev" and the timestamp.
-	devCounter := "0"
-	if mtime != nil {
-		devCounter = formatMTime(mtime)
-	}
-	prerelease := fmt.Sprintf("dev.%s", devCounter)
+	newDevLabel := fmt.Sprintf("dev.%s", formatMTime(mtime))
 
-	spec.Version, err = spec.Version.SetPrerelease(prerelease)
+	prereleaseLabel = upsertDev(prereleaseLabel, newDevLabel)
+
+	spec.Version, err = spec.Version.SetPrerelease(prereleaseLabel)
 	if err != nil {
 		return gitrepo.VersionSpec{}, err
 	}

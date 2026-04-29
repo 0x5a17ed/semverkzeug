@@ -217,12 +217,12 @@ func createTagNative(
 
 	// Wait for the command to finish.
 	if err := cmd.Wait(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("wait for command: %w", err)
 	}
 
 	tagRef, err := cx.Repository().Tag(label)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("resolve tag %q: %w", label, err)
 	}
 
 	uiprint.Step("Created tag %s", tagRef.Name().Short())

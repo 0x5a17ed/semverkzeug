@@ -27,6 +27,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
 type CommitTag struct {
@@ -177,7 +178,9 @@ func IterCommitTags(cx *Context) (iter.Seq[CommitTag], func() error) {
 			case err != nil:
 				return fmt.Errorf("resolve tag %q: %w", ref.Name().Short(), err)
 			case tag != nil:
-				yield(*tag)
+				if !yield(*tag) {
+					return storer.ErrStop
+				}
 			}
 
 			return nil

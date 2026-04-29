@@ -27,22 +27,20 @@ func abbreviateCommitWithHashPrefix(r *git.Repository, h plumbing.Hash, st hashP
 
 		commitMatches := 0
 		matchedTarget := false
-
 		for _, candidate := range hashes {
-			_, err := r.CommitObject(candidate)
-			if err == nil {
-				commitMatches++
-				if candidate == h {
-					matchedTarget = true
-				}
-				if commitMatches > 1 {
-					break
-				}
+			switch _, err := r.CommitObject(candidate); {
+			case errors.Is(err, plumbing.ErrObjectNotFound):
 				continue
+			case err != nil:
+				return "", fmt.Errorf("resolve candidate commit %s: %w", candidate, err)
 			}
 
-			if !errors.Is(err, plumbing.ErrObjectNotFound) {
-				return "", fmt.Errorf("resolve candidate commit %s: %w", candidate, err)
+			commitMatches++
+			if candidate == h {
+				matchedTarget = true
+			}
+			if commitMatches > 1 {
+				break
 			}
 		}
 
@@ -99,16 +97,16 @@ func abbreviateCommitByScanning(r *git.Repository, h plumbing.Hash) (string, err
 }
 
 // FindUniqueCommitHashAbbreviation returns a shortened hash of the commit that uniquely identifies the commit.
-func FindUniqueCommitHashAbbreviation(cx *Context, ci *object.Commit) (string, error) {
-	if ci == nil || ci.Hash == plumbing.ZeroHash {
+func FindUniqueCommitHashAbbreviation(cx *Context, co *object.Commit) (string, error) {
+	if co == nil || co.Hash == plumbing.ZeroHash {
 		return "", fmt.Errorf("commit is nil or has zero hash")
 	}
 
 	r := cx.Repository()
 
 	if store, ok := r.Storer.(hashPrefixStorer); ok {
-		return abbreviateCommitWithHashPrefix(r, ci.Hash, store)
+		return abbreviateCommitWithHashPrefix(r, co.Hash, store)
 	}
 
-	return abbreviateCommitByScanning(r, ci.Hash)
+	return abbreviateCommitByScanning(r, co.Hash)
 }

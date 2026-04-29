@@ -89,6 +89,11 @@ func CreateTag(
 		return nil, err
 	}
 
+	commit, err := cx.Repository().CommitObject(ref.Hash())
+	if err != nil {
+		return nil, fmt.Errorf("resolve commit object: %w", err)
+	}
+
 	guide, err := gitrepo.BuildGuide(cx, ref, scope)
 	if err != nil {
 		return nil, fmt.Errorf("build guide: %w", err)
@@ -108,12 +113,13 @@ func CreateTag(
 		message = fmt.Sprintf("bump version %s -> %s", currSpec.String(), nextLabel)
 	}
 
-	target := ref.Hash().String()[:8]
-	if commit, cErr := cx.Repository().CommitObject(ref.Hash()); cErr == nil {
-		subject, _, _ := strings.Cut(commit.Message, "\n")
-		if subject = strings.TrimSpace(subject); subject != "" {
-			target = fmt.Sprintf("%s (%s)", target, subject)
-		}
+	target, err := gitrepo.FindUniqueCommitHashAbbreviation(cx, commit)
+	if err != nil {
+		return nil, fmt.Errorf("abbreviate commit hash: %w", err)
+	}
+	subject, _, _ := strings.Cut(commit.Message, "\n")
+	if subject = strings.TrimSpace(subject); subject != "" {
+		target = fmt.Sprintf("%s (%s)", target, subject)
 	}
 	uiprint.Substep("Target: %s", target)
 

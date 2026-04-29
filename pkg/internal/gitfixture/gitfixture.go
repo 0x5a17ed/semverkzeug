@@ -54,7 +54,7 @@ func WriteFile(t *testing.T, cx *gitrepo.Context, name, text string) {
 	require.NoError(t, err)
 }
 
-func CommitFile(t *testing.T, cx *gitrepo.Context, name, content string) plumbing.Hash {
+func CommitFile(t *testing.T, cx *gitrepo.Context, name, content string) *object.Commit {
 	t.Helper()
 
 	wt := Worktree(t, cx)
@@ -69,7 +69,10 @@ func CommitFile(t *testing.T, cx *gitrepo.Context, name, content string) plumbin
 	})
 	require.NoError(t, err)
 
-	return h
+	commit, err := cx.Repository().CommitObject(h)
+	require.NoError(t, err)
+
+	return commit
 }
 
 func Checkout(t *testing.T, cx *gitrepo.Context, name string, create bool) {

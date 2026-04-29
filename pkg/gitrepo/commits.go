@@ -98,17 +98,17 @@ func abbreviateCommitByScanning(r *git.Repository, h plumbing.Hash) (string, err
 	return full, nil
 }
 
-// AbbreviatedCommitHash returns a shortened hash of the commit that uniquely identifies the commit.
-func AbbreviatedCommitHash(cx *Context, h plumbing.Hash) (string, error) {
+// FindUniqueCommitHashAbbreviation returns a shortened hash of the commit that uniquely identifies the commit.
+func FindUniqueCommitHashAbbreviation(cx *Context, ci *object.Commit) (string, error) {
+	if ci == nil || ci.Hash == plumbing.ZeroHash {
+		return "", fmt.Errorf("commit is nil or has zero hash")
+	}
+
 	r := cx.Repository()
 
-	if _, err := r.CommitObject(h); err != nil {
-		return "", fmt.Errorf("resolve target commit %s: %w", h, err)
-	}
-
 	if store, ok := r.Storer.(hashPrefixStorer); ok {
-		return abbreviateCommitWithHashPrefix(r, h, store)
+		return abbreviateCommitWithHashPrefix(r, ci.Hash, store)
 	}
 
-	return abbreviateCommitByScanning(r, h)
+	return abbreviateCommitByScanning(r, ci.Hash)
 }

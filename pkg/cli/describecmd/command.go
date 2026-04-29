@@ -60,7 +60,7 @@ func runE(ctx context.Context, cmd *cobra.Command, args []string) error {
 
 	// Add the commit hash to the version if requested.
 	if withCommitHash && guide.HasCommit() {
-		abbreviatedHash, err := gitrepo.AbbreviatedCommitHash(cx, guide.Commit.Hash)
+		abbreviatedHash, err := gitrepo.FindUniqueCommitHashAbbreviation(cx, guide.Commit)
 		if err != nil {
 			return fmt.Errorf("abbreviate commit hash: %w", err)
 		}

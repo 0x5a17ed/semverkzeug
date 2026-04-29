@@ -77,19 +77,19 @@ func TestBuildGuide_ScopedTagSelection(t *testing.T) {
 // branched.
 func TestBuildGuide_SideBranchTag(t *testing.T) {
 	repo := gitfixture.RepoWithOneCommitNoTagsClean(t) // commit A on main
-	bHash := gitfixture.CommitFile(t, repo, "b.txt", "b")
+	bCommit := gitfixture.CommitFile(t, repo, "b.txt", "b")
 
 	gitfixture.Checkout(t, repo, "release/0.5", true)
-	tHash := gitfixture.CommitFile(t, repo, "release.txt", "notes")
-	_, err := repo.Repository().CreateTag("v0.5.0", tHash, nil)
+	tCommit := gitfixture.CommitFile(t, repo, "release.txt", "notes")
+	_, err := repo.Repository().CreateTag("v0.5.0", tCommit.Hash, nil)
 	require.NoError(t, err)
 
 	gitfixture.Checkout(t, repo, "main", false)
-	cHash := gitfixture.CommitFile(t, repo, "c.txt", "c")
+	c := gitfixture.CommitFile(t, repo, "c.txt", "c")
 
 	head, err := repo.Repository().Head()
 	require.NoError(t, err)
-	require.Equal(t, cHash, head.Hash())
+	require.Equal(t, c.Hash, head.Hash())
 
 	guide, err := gitrepo.BuildGuide(repo, head, gitrepo.RootScope())
 	require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestBuildGuide_SideBranchTag(t *testing.T) {
 	assert.Equal(t, "v0.5.0", vt.TagName)
 	assert.Equal(t, "0.5.0", vt.VersionSpec.Version.String())
 	require.NotNil(t, guide.MergeBase)
-	assert.Equal(t, bHash, guide.MergeBase.Hash)
+	assert.Equal(t, bCommit.Hash, guide.MergeBase.Hash)
 	assert.Equal(t, 1, guide.Depth)
 }
 
@@ -115,33 +115,33 @@ func TestBuildGuide_SideBranchTag(t *testing.T) {
 // v0.5.0 wins by semver; merge-base(D, v0.5.0) == C.
 func TestBuildGuide_MultipleReleaseBranches(t *testing.T) {
 	repo := gitfixture.RepoWithOneCommitNoTagsClean(t) // A
-	bHash := gitfixture.CommitFile(t, repo, "b.txt", "b")
-	cHash := gitfixture.CommitFile(t, repo, "c.txt", "c")
+	bCommit := gitfixture.CommitFile(t, repo, "b.txt", "b")
+	cCommit := gitfixture.CommitFile(t, repo, "c.txt", "c")
 
 	// release/0.4 branches from B.
 	require.NoError(t, gitfixture.Worktree(t, repo).Checkout(&git.CheckoutOptions{
-		Hash:   bHash,
+		Hash:   bCommit.Hash,
 		Branch: plumbing.NewBranchReferenceName("release/0.4"),
 		Create: true,
 	}))
 	t04 := gitfixture.CommitFile(t, repo, "rel04.txt", "0.4 notes")
-	_, err := repo.Repository().CreateTag("v0.4.0", t04, nil)
+	_, err := repo.Repository().CreateTag("v0.4.0", t04.Hash, nil)
 	require.NoError(t, err)
 
 	// release/0.5 branches from C.
 	gitfixture.Checkout(t, repo, "main", false)
 	gitfixture.Checkout(t, repo, "release/0.5", true)
 	t05 := gitfixture.CommitFile(t, repo, "rel05.txt", "0.5 notes")
-	_, err = repo.Repository().CreateTag("v0.5.0", t05, nil)
+	_, err = repo.Repository().CreateTag("v0.5.0", t05.Hash, nil)
 	require.NoError(t, err)
 
 	// One more commit on main.
 	gitfixture.Checkout(t, repo, "main", false)
-	dHash := gitfixture.CommitFile(t, repo, "d.txt", "d")
+	dCommit := gitfixture.CommitFile(t, repo, "d.txt", "d")
 
 	head, err := repo.Repository().Head()
 	require.NoError(t, err)
-	require.Equal(t, dHash, head.Hash())
+	require.Equal(t, dCommit.Hash, head.Hash())
 
 	guide, err := gitrepo.BuildGuide(repo, head, gitrepo.RootScope())
 	require.NoError(t, err)
@@ -149,7 +149,7 @@ func TestBuildGuide_MultipleReleaseBranches(t *testing.T) {
 	require.Len(t, guide.Tags, 1)
 	assert.Equal(t, "v0.5.0", guide.Tags[0].TagName)
 	require.NotNil(t, guide.MergeBase)
-	assert.Equal(t, cHash, guide.MergeBase.Hash)
+	assert.Equal(t, cCommit.Hash, guide.MergeBase.Hash)
 	assert.Equal(t, 1, guide.Depth)
 }
 
@@ -166,8 +166,8 @@ func TestBuildGuide_AncestorOfTag(t *testing.T) {
 
 	// Add later commits and tag the latest one.
 	gitfixture.CommitFile(t, repo, "b.txt", "b")
-	tipHash := gitfixture.CommitFile(t, repo, "c.txt", "c")
-	_, err = repo.Repository().CreateTag("v0.5.0", tipHash, nil)
+	tip := gitfixture.CommitFile(t, repo, "c.txt", "c")
+	_, err = repo.Repository().CreateTag("v0.5.0", tip.Hash, nil)
 	require.NoError(t, err)
 
 	// Look up version from the early commit's perspective — v0.5.0
@@ -190,8 +190,8 @@ func TestBuildGuide_StrandedTagFiltered(t *testing.T) {
 	// Build a side branch with a tag, then delete the branch so the
 	// tag itself only keeps the tagged commit alive.
 	gitfixture.Checkout(t, repo, "experimental", true)
-	expHash := gitfixture.CommitFile(t, repo, "exp.txt", "experiment")
-	_, err := repo.Repository().CreateTag("v9.0.0", expHash, nil)
+	expCommit := gitfixture.CommitFile(t, repo, "exp.txt", "experiment")
+	_, err := repo.Repository().CreateTag("v9.0.0", expCommit.Hash, nil)
 	require.NoError(t, err)
 
 	gitfixture.Checkout(t, repo, "main", false)
@@ -226,11 +226,11 @@ func TestBuildGuide_RemoteTrackingBranch(t *testing.T) {
 	// Arrange: build the side branch locally, tag it, then convert it
 	// into a remote-tracking-only ref so no `refs/heads/*` reaches T.
 	repo := gitfixture.RepoWithOneCommitNoTagsClean(t) // A on main
-	bHash := gitfixture.CommitFile(t, repo, "b.txt", "b")
+	bCommit := gitfixture.CommitFile(t, repo, "b.txt", "b")
 
 	gitfixture.Checkout(t, repo, "release/0.5", true)
-	tHash := gitfixture.CommitFile(t, repo, "release.txt", "notes")
-	_, err := repo.Repository().CreateTag("v0.5.0", tHash, nil)
+	tCommit := gitfixture.CommitFile(t, repo, "release.txt", "notes")
+	_, err := repo.Repository().CreateTag("v0.5.0", tCommit.Hash, nil)
 	require.NoError(t, err)
 
 	gitfixture.Checkout(t, repo, "main", false)
@@ -240,15 +240,15 @@ func TestBuildGuide_RemoteTrackingBranch(t *testing.T) {
 	require.NoError(t, repo.Repository().Storer.SetReference(
 		plumbing.NewHashReference(
 			plumbing.NewRemoteReferenceName("origin", "release/0.5"),
-			tHash,
+			tCommit.Hash,
 		),
 	))
 
-	cHash := gitfixture.CommitFile(t, repo, "c.txt", "c")
+	c := gitfixture.CommitFile(t, repo, "c.txt", "c")
 
 	head, err := repo.Repository().Head()
 	require.NoError(t, err)
-	require.Equal(t, cHash, head.Hash())
+	require.Equal(t, c.Hash, head.Hash())
 
 	// Act.
 	guide, err := gitrepo.BuildGuide(repo, head, gitrepo.RootScope())
@@ -260,6 +260,6 @@ func TestBuildGuide_RemoteTrackingBranch(t *testing.T) {
 		"v0.5.0 reachable via origin/release/0.5 must not be filtered as stranded")
 	assert.Equal(t, "v0.5.0", guide.Tags[0].TagName)
 	require.NotNil(t, guide.MergeBase)
-	assert.Equal(t, bHash, guide.MergeBase.Hash)
+	assert.Equal(t, bCommit.Hash, guide.MergeBase.Hash)
 	assert.Equal(t, 1, guide.Depth)
 }

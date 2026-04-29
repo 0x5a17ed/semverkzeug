@@ -60,8 +60,8 @@ func TestGetTagMap(t *testing.T) {
 	t.Run("lightweight-tag", func(t *testing.T) {
 		// Arrange: repo with one commit and a lightweight tag.
 		repo := gitfixture.RepoEmpty(t)
-		h := gitfixture.CommitFile(t, repo, "a.txt", "a")
-		_, err := repo.Repository().CreateTag("v1.0.0", h, nil)
+		c := gitfixture.CommitFile(t, repo, "a.txt", "a")
+		_, err := repo.Repository().CreateTag("v1.0.0", c.Hash, nil)
 		require.NoError(t, err)
 
 		// Act
@@ -69,14 +69,14 @@ func TestGetTagMap(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		assert.Equal(t, []string{"v1.0.0"}, filterNamesInVersionTagMap(tm, h))
+		assert.Equal(t, []string{"v1.0.0"}, filterNamesInVersionTagMap(tm, c.Hash))
 	})
 
 	t.Run("annotated-tag", func(t *testing.T) {
 		// Arrange: repo with one commit and an annotated tag.
 		repo := gitfixture.RepoEmpty(t)
-		h := gitfixture.CommitFile(t, repo, "a.txt", "a")
-		_, err := repo.Repository().CreateTag("v2.0.0", h, &git.CreateTagOptions{
+		c := gitfixture.CommitFile(t, repo, "a.txt", "a")
+		_, err := repo.Repository().CreateTag("v2.0.0", c.Hash, &git.CreateTagOptions{
 			Tagger:  gitfixture.TestSig,
 			Message: "release v2.0.0",
 		})
@@ -87,16 +87,16 @@ func TestGetTagMap(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		assert.Equal(t, []string{"v2.0.0"}, filterNamesInVersionTagMap(tm, h))
+		assert.Equal(t, []string{"v2.0.0"}, filterNamesInVersionTagMap(tm, c.Hash))
 	})
 
 	t.Run("multiple-tags-same-commit", func(t *testing.T) {
 		// Arrange: two tags pointing at the same commit.
 		repo := gitfixture.RepoEmpty(t)
-		h := gitfixture.CommitFile(t, repo, "a.txt", "a")
-		_, err := repo.Repository().CreateTag("v1.0.0", h, nil)
+		c := gitfixture.CommitFile(t, repo, "a.txt", "a")
+		_, err := repo.Repository().CreateTag("v1.0.0", c.Hash, nil)
 		require.NoError(t, err)
-		_, err = repo.Repository().CreateTag("mod/v1.0.0", h, nil)
+		_, err = repo.Repository().CreateTag("mod/v1.0.0", c.Hash, nil)
 		require.NoError(t, err)
 
 		// Act
@@ -104,19 +104,19 @@ func TestGetTagMap(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		assert.Len(t, tm[h], 2)
-		assert.ElementsMatch(t, []string{"v1.0.0", "mod/v1.0.0"}, filterNamesInVersionTagMap(tm, h))
+		assert.Len(t, tm[c.Hash], 2)
+		assert.ElementsMatch(t, []string{"v1.0.0", "mod/v1.0.0"}, filterNamesInVersionTagMap(tm, c.Hash))
 	})
 
 	t.Run("tags-on-different-commits", func(t *testing.T) {
 		// Arrange: two commits, each with its own tag.
 		repo := gitfixture.RepoEmpty(t)
-		h1 := gitfixture.CommitFile(t, repo, "a.txt", "a")
-		_, err := repo.Repository().CreateTag("v1.0.0", h1, nil)
+		c1 := gitfixture.CommitFile(t, repo, "a.txt", "a")
+		_, err := repo.Repository().CreateTag("v1.0.0", c1.Hash, nil)
 		require.NoError(t, err)
 
-		h2 := gitfixture.CommitFile(t, repo, "b.txt", "b")
-		_, err = repo.Repository().CreateTag("v2.0.0", h2, &git.CreateTagOptions{
+		c2 := gitfixture.CommitFile(t, repo, "b.txt", "b")
+		_, err = repo.Repository().CreateTag("v2.0.0", c2.Hash, &git.CreateTagOptions{
 			Tagger:  gitfixture.TestSig,
 			Message: "release v2.0.0",
 		})
@@ -127,7 +127,7 @@ func TestGetTagMap(t *testing.T) {
 
 		// Assert
 		require.NoError(t, err)
-		assert.Equal(t, []string{"v1.0.0"}, filterNamesInVersionTagMap(tm, h1))
-		assert.Equal(t, []string{"v2.0.0"}, filterNamesInVersionTagMap(tm, h2))
+		assert.Equal(t, []string{"v1.0.0"}, filterNamesInVersionTagMap(tm, c1.Hash))
+		assert.Equal(t, []string{"v2.0.0"}, filterNamesInVersionTagMap(tm, c2.Hash))
 	})
 }

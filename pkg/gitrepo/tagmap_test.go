@@ -108,6 +108,37 @@ func TestGetTagMap(t *testing.T) {
 		assert.ElementsMatch(t, []string{"v1.0.0", "mod/v1.0.0"}, filterNamesInVersionTagMap(tm, c.Hash))
 	})
 
+	t.Run("annotated-tag-pointing-at-annotated-tag", func(t *testing.T) {
+		// Arrange: an annotated tag whose target is another annotated tag
+		// object (rather than a commit), forcing peelTagObjectToCommit to
+		// recurse through the inner tag before reaching the commit.
+		repo := gitfixture.RepoEmpty(t)
+		c := gitfixture.CommitFile(t, repo, "a.txt", "a")
+
+		inner, err := repo.Repository().CreateTag("v1.0.0", c.Hash, &git.CreateTagOptions{
+			Tagger:  gitfixture.TestSig,
+			Message: "release v1.0.0",
+		})
+		require.NoError(t, err)
+
+		_, err = repo.Repository().CreateTag("v2.0.0", inner.Hash(), &git.CreateTagOptions{
+			Tagger:  gitfixture.TestSig,
+			Message: "release v2.0.0",
+		})
+		require.NoError(t, err)
+
+		// Act
+		tm, err := gitrepo.NewVersionTagMapFromRepo(repo, nil)
+
+		// Assert: both tags resolve to the same underlying commit; the outer
+		// tag only does so via the recursive peeling branch.
+		require.NoError(t, err)
+		assert.ElementsMatch(t,
+			[]string{"v1.0.0", "v2.0.0"},
+			filterNamesInVersionTagMap(tm, c.Hash),
+		)
+	})
+
 	t.Run("tags-on-different-commits", func(t *testing.T) {
 		// Arrange: two commits, each with its own tag.
 		repo := gitfixture.RepoEmpty(t)

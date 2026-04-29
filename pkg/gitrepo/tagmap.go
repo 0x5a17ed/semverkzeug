@@ -52,7 +52,13 @@ type peeledTag struct {
 }
 
 // peelTagObjectToCommit recursively peels a tag object to a commit object.
-func peelTagObjectToCommit(repo *git.Repository, tagObj *object.Tag) (*peeledTag, error) {
+func peelTagObjectToCommit(
+	repo *git.Repository,
+	tagObj *object.Tag,
+	seen map[plumbing.Hash]struct{},
+) (
+	*peeledTag, error,
+) {
 	// Usually annotated tags target commits directly.
 	if commit, err := repo.CommitObject(tagObj.Target); err == nil {
 		return &peeledTag{commit.Hash, commit.Committer.When}, nil
@@ -67,12 +73,21 @@ func peelTagObjectToCommit(repo *git.Repository, tagObj *object.Tag) (*peeledTag
 		return nil, fmt.Errorf("get tag object: %w", err)
 	}
 
-	return peelTagObjectToCommit(repo, nextTag)
+	if seen == nil {
+		seen = make(map[plumbing.Hash]struct{})
+	} else {
+		if _, ok := seen[nextTag.Target]; ok {
+			return nil, fmt.Errorf("tag object cycle detected")
+		}
+	}
+	seen[nextTag.Target] = struct{}{}
+
+	return peelTagObjectToCommit(repo, nextTag, seen)
 }
 
 func peelCommitTagAnnotated(repo *git.Repository, tagObj *object.Tag) (*peeledTag, error) {
 	// Peel the tag target to a commit.
-	rt, err := peelTagObjectToCommit(repo, tagObj)
+	rt, err := peelTagObjectToCommit(repo, tagObj, nil)
 	if err != nil {
 		return nil, fmt.Errorf("peel tag target to commit: %w", err)
 	}

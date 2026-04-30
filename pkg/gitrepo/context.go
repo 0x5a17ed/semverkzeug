@@ -2,12 +2,15 @@ package gitrepo
 
 import (
 	"fmt"
+	"net/url"
 	"sync"
 
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
+	"github.com/go-git/go-git/v5/storage/filesystem"
+	"github.com/go-git/go-git/v5/storage/memory"
 )
 
 type Context struct {
@@ -44,7 +47,18 @@ func (cx *Context) loadWorktreeOnce() (*git.Worktree, error) {
 }
 
 func (cx *Context) String() string {
-	return fmt.Sprintf("gitrepo.Context{repo=%#v}", cx.repo)
+	var repoString string
+	if cx.repo == nil {
+		repoString = "<nil>"
+	} else if st, ok := cx.repo.Storer.(*filesystem.Storage); ok {
+		repoString = fmt.Sprintf("<filesystem:path=%s>", new(url.URL{Path: st.Filesystem().Root()}).String())
+	} else if _, ok := cx.repo.Storer.(*memory.Storage); ok {
+		repoString = "<memory>"
+	} else {
+		repoString = "<unknown>"
+	}
+
+	return fmt.Sprintf("gitrepo.Context{repo=%s}", repoString)
 }
 
 // Repository returns the underlying git repository.

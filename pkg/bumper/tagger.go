@@ -26,7 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/storage/filesystem"
@@ -34,48 +33,6 @@ import (
 	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 	"github.com/0x5a17ed/semverkzeug/pkg/internal/uiprint"
 )
-
-type partFunc func(semver.Version) semver.Version
-
-func (f partFunc) bump(inp semver.Version) semver.Version {
-	return f(inp)
-}
-
-type Part interface {
-	bump(inp semver.Version) semver.Version
-}
-
-var (
-	Major Part = partFunc(semver.Version.IncMajor)
-	Minor Part = partFunc(semver.Version.IncMinor)
-	Patch Part = partFunc(semver.Version.IncPatch)
-)
-
-var (
-	ErrRepositoryIsEmpty = errors.New("repository is empty")
-	ErrRepositoryIsDirty = errors.New("repository contains uncommitted changes")
-)
-
-func Bump(ov semver.Version, part Part) semver.Version {
-	return part.bump(ov)
-}
-
-func VerifyRepo(cx *gitrepo.Context, ref *plumbing.Reference) error {
-	if ref == nil {
-		return ErrRepositoryIsEmpty
-	}
-
-	st, err := gitrepo.BuildWorktreeStatus(cx)
-	if err != nil {
-		return fmt.Errorf("read worktree status: %w", err)
-	}
-
-	if !st.IsClean() {
-		return ErrRepositoryIsDirty
-	}
-
-	return nil
-}
 
 func CreateTag(
 	cx *gitrepo.Context,

@@ -13,9 +13,8 @@ import (
 	"github.com/0x5a17ed/semverkzeug/pkg/internal/gitfixture"
 )
 
-func TestCreateTag_FilesystemRepositoryHappyPath(t *testing.T) {
-	// Arrange
-	cx := gitfixture.RepoWithOneCommitOneTagClean(t)
+func gitEnvFixture(t *testing.T) {
+	t.Helper()
 
 	t.Setenv("GIT_AUTHOR_NAME", gitfixture.TestSig.Name)
 	t.Setenv("GIT_AUTHOR_EMAIL", gitfixture.TestSig.Email)
@@ -26,23 +25,67 @@ func TestCreateTag_FilesystemRepositoryHappyPath(t *testing.T) {
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "tag.gpgSign")
 	t.Setenv("GIT_CONFIG_VALUE_0", "false")
+}
 
-	head := gitfixture.Head(t, cx)
+func TestCreateTag(t *testing.T) {
+	t.Run("filesystem-empty", func(t *testing.T) {
+		// Arrange
+		cx := gitfixture.RepoEmpty(t)
 
-	// Act
-	tagRef, err := bumper.CreateTag(cx, head, bumper.Patch, gitrepo.RootScope())
+		gitEnvFixture(t)
 
-	// Assert
-	require.NoError(t, err)
+		// Act
+		_, err := bumper.CreateTag(cx, nil, bumper.Patch, gitrepo.RootScope())
 
-	assert.Equal(t, plumbing.NewTagReferenceName("v0.1.1"), tagRef.Name())
+		// Assert
+		assert.ErrorIs(t, err, bumper.ErrRepositoryIsEmpty)
+	})
 
-	resolvedRef, err := cx.Repository().Tag("v0.1.1")
-	require.NoError(t, err)
-	assert.Equal(t, tagRef.Hash(), resolvedRef.Hash())
+	t.Run("filesystem-first-release", func(t *testing.T) {
+		// Arrange
+		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
-	tagObject, err := cx.Repository().TagObject(tagRef.Hash())
-	require.NoError(t, err)
-	assert.Equal(t, "v0.1.1", tagObject.Name)
-	assert.Equal(t, "bump version v0.1.0 -> v0.1.1\n", tagObject.Message)
+		gitEnvFixture(t)
+
+		// Act
+		tagRef, err := bumper.CreateTag(cx, gitfixture.Head(t, cx), bumper.Patch, gitrepo.RootScope())
+
+		// Assert
+		require.NoError(t, err)
+
+		assert.Equal(t, plumbing.NewTagReferenceName("v0.0.1"), tagRef.Name())
+
+		resolvedRef, err := cx.Repository().Tag("v0.0.1")
+		require.NoError(t, err)
+		assert.Equal(t, tagRef.Hash(), resolvedRef.Hash())
+
+		tagObject, err := cx.Repository().TagObject(tagRef.Hash())
+		require.NoError(t, err)
+		assert.Equal(t, "v0.0.1", tagObject.Name)
+		assert.Equal(t, "first version v0.0.1\n", tagObject.Message)
+	})
+
+	t.Run("filesystem-populated", func(t *testing.T) {
+		// Arrange
+		cx := gitfixture.RepoWithOneCommitOneTagClean(t)
+
+		gitEnvFixture(t)
+
+		// Act
+		tagRef, err := bumper.CreateTag(cx, gitfixture.Head(t, cx), bumper.Patch, gitrepo.RootScope())
+
+		// Assert
+		require.NoError(t, err)
+
+		assert.Equal(t, plumbing.NewTagReferenceName("v0.1.1"), tagRef.Name())
+
+		resolvedRef, err := cx.Repository().Tag("v0.1.1")
+		require.NoError(t, err)
+		assert.Equal(t, tagRef.Hash(), resolvedRef.Hash())
+
+		tagObject, err := cx.Repository().TagObject(tagRef.Hash())
+		require.NoError(t, err)
+		assert.Equal(t, "v0.1.1", tagObject.Name)
+		assert.Equal(t, "bump version v0.1.0 -> v0.1.1\n", tagObject.Message)
+	})
 }

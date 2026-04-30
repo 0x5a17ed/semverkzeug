@@ -212,8 +212,9 @@ func createTagNative(
 	defer hintTimer.Stop()
 
 	// Write the tag message to the stdin pipe.
-	_, _ = io.WriteString(stdin, message)
-	_ = stdin.Close()
+	if err := feedMessage(stdin, message); err != nil {
+		return nil, fmt.Errorf("write message: %w", err)
+	}
 
 	// Wait for the command to finish.
 	if err := cmd.Wait(); err != nil {
@@ -228,4 +229,23 @@ func createTagNative(
 	uiprint.Step("Created tag %s", tagRef.Name().Short())
 
 	return tagRef, nil
+}
+
+func feedMessage(wr io.WriteCloser, message string) (err error) {
+	defer func() {
+		if errClose := wr.Close(); errClose != nil && err == nil {
+			err = errClose
+		}
+	}()
+
+	_, err = io.WriteString(wr, message)
+	if err != nil {
+		return fmt.Errorf("write message: %w", err)
+	}
+
+	if sw, ok := wr.(interface{ Flush() error }); ok {
+		return sw.Flush()
+	}
+
+	return nil
 }

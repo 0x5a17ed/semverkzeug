@@ -35,13 +35,20 @@ import (
 	"github.com/0x5a17ed/semverkzeug/pkg/internal/uiprint"
 )
 
-type Part int
+type partFunc func(semver.Version) semver.Version
 
-const (
-	_ Part = iota
-	Major
-	Minor
-	Patch
+func (f partFunc) bump(inp semver.Version) semver.Version {
+	return f(inp)
+}
+
+type Part interface {
+	bump(inp semver.Version) semver.Version
+}
+
+var (
+	Major Part = partFunc(semver.Version.IncMajor)
+	Minor Part = partFunc(semver.Version.IncMinor)
+	Patch Part = partFunc(semver.Version.IncPatch)
 )
 
 var (
@@ -50,16 +57,7 @@ var (
 )
 
 func Bump(ov semver.Version, part Part) semver.Version {
-	switch part {
-	case Major:
-		return ov.IncMajor()
-	case Minor:
-		return ov.IncMinor()
-	case Patch:
-		return ov.IncPatch()
-	default:
-		panic(fmt.Sprintf("bad part %d", part))
-	}
+	return part.bump(ov)
 }
 
 func VerifyRepo(cx *gitrepo.Context, ref *plumbing.Reference) error {

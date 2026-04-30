@@ -22,7 +22,9 @@ import (
 	"github.com/go-git/go-git/v5"
 )
 
-// BuildWorktreeStatus returns the status of the working tree with external.
+// BuildWorktreeStatus computes the worktree status of the current repository
+// context by comparing the working tree state with the index. It returns a
+// [git.Status] or an error.
 func BuildWorktreeStatus(cx *Context) (git.Status, error) {
 	wt, err := cx.LoadWorktree()
 	if err != nil {

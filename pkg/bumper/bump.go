@@ -226,8 +226,6 @@ func createTagNative(
 		return nil, fmt.Errorf("resolve tag %q: %w", label, err)
 	}
 
-	uiprint.Step("Created tag %s", tagRef.Name().Short())
-
 	return tagRef, nil
 }
 

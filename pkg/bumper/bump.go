@@ -101,6 +101,17 @@ func CreateTag(
 
 	currSpec := gitrepo.LatestSpec(guide)
 	nextLabel := currSpec.WithVersion(Bump(currSpec.Version, part)).String()
+
+	// Double-check the tag label is not already in use.
+	switch _, err := cx.Repository().Tag(nextLabel); {
+	case errors.Is(err, git.ErrTagNotFound):
+		// Fall through.
+	case err != nil:
+		return nil, fmt.Errorf("resolve tag %q: %w", nextLabel, err)
+	default:
+		return nil, fmt.Errorf("tag %q already exists", nextLabel)
+	}
+
 	uiprint.Step("Creating annotated tag %s", nextLabel)
 
 	var message string

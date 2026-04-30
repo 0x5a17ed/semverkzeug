@@ -19,6 +19,7 @@ package gitrepo
 import (
 	"fmt"
 	"path"
+	"strings"
 )
 
 // Scope represents a cleaned, validated tag scope — a relative
@@ -42,13 +43,22 @@ func RootScope() Scope { return Scope{} }
 // via "..".  The inputs "", ".", and "/" all resolve to the root
 // scope.
 func ParseScope(raw string) (Scope, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return Scope{}, nil
+	}
+
 	// Use path.Clean (unix-style) to collapse redundant separators
 	// and resolve single-dot segments.
 	s := path.Clean(raw)
 
-	// "." and "" both mean root.
-	if s == "" || s == "." {
+	// ".", "", and slash-only paths all mean root.
+	if s == "" || s == "." || s == "/" {
 		return Scope{}, nil
+	}
+
+	if path.IsAbs(s) {
+		return Scope{}, fmt.Errorf("%#q: invalid scope format", raw)
 	}
 
 	if !scopeRegExp.MatchString(s) {

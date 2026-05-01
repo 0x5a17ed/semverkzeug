@@ -1,7 +1,6 @@
 package gitrepo
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -16,46 +15,58 @@ type hashPrefixStorer interface {
 	HashesWithPrefix(prefix []byte) ([]plumbing.Hash, error)
 }
 
+// minAbbrevNibbles is the floor length, in hex characters, for an abbreviated
+// commit hash. Matches git's default core.abbrev.
+const minAbbrevNibbles = 7
+
+func commonPrefixLength(a, b string) (i int) {
+	n := min(len(a), len(b))
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return i
+}
+
 func abbreviateCommitWithHashPrefix(r *git.Repository, h plumbing.Hash, st hashPrefixStorer) (string, error) {
-	for i, n := 4, len(h); i <= n; i++ {
-		prefix := h[:i]
+	// HashesWithPrefix only accepts byte-aligned prefixes, but we want
+	// nibble-aligned answers down to minAbbrevNibbles. A single query at the
+	// floor byte boundary returns a superset of every commit that could
+	// collide at any k >= minAbbrevNibbles, so one round trip is enough.
+	byteFloor := minAbbrevNibbles / 2
+	hashes, err := st.HashesWithPrefix(h[:byteFloor])
+	if err != nil {
+		return "", fmt.Errorf("find hashes with prefix %x: %w", h[:byteFloor], err)
+	}
 
-		hashes, err := st.HashesWithPrefix(prefix)
-		if err != nil {
-			return "", fmt.Errorf("find hashes with prefix %q: %w", prefix, err)
+	full := h.String()
+	maxCollision := 0
+	for _, candidate := range hashes {
+		if candidate == h {
+			continue
+		}
+		switch _, err := r.CommitObject(candidate); {
+		case errors.Is(err, plumbing.ErrObjectNotFound):
+			continue
+		case err != nil:
+			return "", fmt.Errorf("resolve candidate commit %s: %w", candidate, err)
 		}
 
-		commitMatches := 0
-		matchedTarget := false
-		for _, candidate := range hashes {
-			switch _, err := r.CommitObject(candidate); {
-			case errors.Is(err, plumbing.ErrObjectNotFound):
-				continue
-			case err != nil:
-				return "", fmt.Errorf("resolve candidate commit %s: %w", candidate, err)
-			}
-
-			commitMatches++
-			if candidate == h {
-				matchedTarget = true
-			}
-			if commitMatches > 1 {
-				break
-			}
-		}
-
-		if matchedTarget && commitMatches == 1 {
-			return hex.EncodeToString(h[:i]), nil
+		if lcp := commonPrefixLength(full, candidate.String()); lcp > maxCollision {
+			maxCollision = lcp
 		}
 	}
 
-	return h.String(), nil
+	k := max(maxCollision+1, minAbbrevNibbles)
+	if k > len(full) {
+		return full, nil
+	}
+	return full[:k], nil
 }
 
 func abbreviateCommitByScanning(r *git.Repository, h plumbing.Hash) (string, error) {
 	full := h.String()
 
-	for i, n := 7, len(full); i <= n; i++ {
+	for i, n := minAbbrevNibbles, len(full); i <= n; i++ {
 		prefix := full[:i]
 
 		iter, err := r.CommitObjects()

@@ -1,7 +1,6 @@
 package gitrepo_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -19,5 +18,5 @@ func TestAbbreviatedCommitHash(t *testing.T) {
 	got, err := gitrepo.FindUniqueCommitHashAbbreviation(repo, c)
 	require.NoError(t, err)
 
-	assert.Equal(t, fmt.Sprintf("%s", c.Hash.String()[:8]), got)
+	assert.Equal(t, c.Hash.String()[:7], got)
 }

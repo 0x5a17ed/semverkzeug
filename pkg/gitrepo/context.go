@@ -84,7 +84,8 @@ func (cx *Context) LoadWorktreeFilesystem() (billy.Filesystem, error) {
 	return wt.Filesystem, nil
 }
 
-func newContext(r *git.Repository) (*Context, error) {
+// NewContextFromRepo creates a new Context instance from the provided git repository.
+func NewContextFromRepo(r *git.Repository) (*Context, error) {
 	cx := &Context{
 		repo: r,
 	}
@@ -103,9 +104,5 @@ func NewContextFromPath(p string) (*Context, error) {
 		return nil, fmt.Errorf("open repository %#q: %w", p, err)
 	}
 
-	return newContext(repo)
-}
-
-func NewContextFromRepo(r *git.Repository) (*Context, error) {
-	return newContext(r)
+	return NewContextFromRepo(repo)
 }

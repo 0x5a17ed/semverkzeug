@@ -33,6 +33,11 @@ import (
 	"github.com/0x5a17ed/semverkzeug/internal/uiprint"
 )
 
+func hasGitCommand() bool {
+	_, err := exec.LookPath("git")
+	return err == nil
+}
+
 func CreateTag(
 	cx *gitrepo.Context,
 	ref *plumbing.Reference,
@@ -91,7 +96,7 @@ func CreateTag(
 	var tagRef *plumbing.Reference
 
 	// Check if the repository is backed by a filesystem storage.
-	if p, hasStorage := cx.DotGitPath(); hasStorage {
+	if p, hasStorage := cx.DotGitPath(); hasStorage && hasGitCommand() {
 		// Use the native git implementation to ensure consistency with other git commands.
 		tagRef, err = createTagNative(cx, ref, nextLabel, message, p)
 		if err != nil {

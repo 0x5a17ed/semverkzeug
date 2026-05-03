@@ -19,6 +19,7 @@ package main
 import (
 	"os"
 
+	konghelp "github.com/0x5a17ed/kong-help"
 	"github.com/alecthomas/kong"
 
 	"github.com/0x5a17ed/semverkzeug/internal/uiprint"
@@ -27,6 +28,7 @@ import (
 func main() {
 	var grammar cli
 	kctx := kong.Parse(&grammar,
+		konghelp.Help(),
 		kong.Name("semverkzeug"),
 		kong.Description("versioning tool for git repositories"),
 		kong.UsageOnError(),

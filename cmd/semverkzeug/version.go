@@ -14,19 +14,21 @@
  * language governing permissions and limitations under the License.
  */
 
-package version
+package main
 
 import (
 	"runtime/debug"
 	"slices"
 )
 
-var Version = "dev"
+var Version = ""
 
 func initVersion() {
 	if Version != "" {
 		return
 	}
+
+	Version = "dev"
 
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {

@@ -20,8 +20,6 @@ import (
 	"fmt"
 
 	"github.com/alecthomas/kong"
-
-	"github.com/0x5a17ed/semverkzeug/pkg/version"
 )
 
 // versionFlag, if given, prints the embedded program version and exits.
@@ -33,7 +31,7 @@ func (versionFlag) IsBool() bool                         { return true }
 // BeforeReset is called by kong as soon as the flag is encountered, so
 // the version is printed before any command parsing side effects run.
 func (versionFlag) BeforeReset(app *kong.Kong) error {
-	_, _ = fmt.Fprintln(app.Stdout, version.Version)
+	_, _ = fmt.Fprintln(app.Stdout, Version)
 	app.Exit(0)
 	return nil
 }

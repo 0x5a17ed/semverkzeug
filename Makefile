@@ -1,6 +1,6 @@
 BINARY_NAME := semverkzeug
 
-VERSION = $(shell go run ./cmd/semverkzeug describe --no-prefix)
+VERSION = $(shell go run ./cmd/semverkzeug describe)
 
 SHELL := bash
 .ONESHELL:

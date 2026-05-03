@@ -3,6 +3,7 @@ module github.com/0x5a17ed/semverkzeug
 go 1.26.0
 
 require (
+	github.com/0x5a17ed/kong-help v0.4.0
 	github.com/0x5a17ed/xit v0.3.0
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alecthomas/kong v1.15.0
@@ -16,7 +17,6 @@ require (
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
-	github.com/0x5a17ed/kong-help v0.4.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect

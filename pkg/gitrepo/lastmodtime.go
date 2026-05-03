@@ -20,9 +20,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"iter"
 	"path/filepath"
 	"time"
 
+	"github.com/0x5a17ed/xit"
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/storage/filesystem"
@@ -119,47 +121,54 @@ func findIndexMTime(cx *Context) (*time.Time, error) {
 	return new(fi.ModTime().UTC()), nil
 }
 
-// FindWorktreeMTime returns the last modification time of the files in the working tree.
-func FindWorktreeMTime(cx *Context) (*time.Time, error) {
-	wt, err := cx.LoadWorktree()
-	if err != nil {
-		return nil, fmt.Errorf("load worktree: %w", err)
-	}
+// DirtyEntry describes a single entry in the worktree status that is not
+// fully unmodified, together with the effective mtime resolved for it.
+type DirtyEntry struct {
+	path     string
+	worktree git.StatusCode
+	staging  git.StatusCode
+	mtime    time.Time
+}
 
-	st, err := BuildWorktreeStatus(cx)
-	if err != nil {
-		return nil, fmt.Errorf("read status: %w", err)
-	}
+func (e *DirtyEntry) Path() string                   { return e.path }
+func (e *DirtyEntry) WorktreeStatus() git.StatusCode { return e.worktree }
+func (e *DirtyEntry) StagingStatus() git.StatusCode  { return e.staging }
+func (e *DirtyEntry) ModTime() time.Time             { return e.mtime }
 
-	var latestChange time.Time
-
-	// Try seeding latestChange from the index file first.
-	switch indexMTime, err := findIndexMTime(cx); {
-	case err != nil:
-		return nil, fmt.Errorf("find index mtime: %w", err)
-	case indexMTime != nil:
-		latestChange = *indexMTime
-	}
-
-	// Walk the working tree to find the latest change.
-	var dirty bool
-	for fp, fst := range st {
-		// Ignore unmodified files.
-		if fst.Worktree == git.Unmodified && fst.Staging == git.Unmodified {
-			continue
+// IterDirtyEntries walks the worktree status and returns the dirty entries
+// with their effective mtimes (using the deleted-ancestor walk for paths
+// that no longer exist), along with the index file's mtime if available.
+func IterDirtyEntries(cx *Context) (iter.Seq[DirtyEntry], func() error) {
+	return xit.Perform(func(yield func(DirtyEntry) bool) error {
+		wt, err := cx.LoadWorktree()
+		if err != nil {
+			return fmt.Errorf("load worktree: %w", err)
 		}
-		dirty = true
 
-		switch mtime, err := findMTimePath(wt.Filesystem, fp); {
-		case err != nil:
-			return nil, err
-		case mtime.After(latestChange):
-			latestChange = mtime
+		st, err := BuildWorktreeStatus(cx)
+		if err != nil {
+			return fmt.Errorf("build worktree status: %w", err)
 		}
-	}
 
-	if !dirty {
-		return nil, ErrWorktreeClean
-	}
-	return &latestChange, nil
+		for fp, fst := range st {
+			if fst.Worktree == git.Unmodified && fst.Staging == git.Unmodified {
+				continue
+			}
+
+			mtime, err := findMTimePath(wt.Filesystem, fp)
+			if err != nil {
+				return fmt.Errorf("find mtime for %q: %w", fp, err)
+			}
+
+			if !yield(DirtyEntry{
+				path:     fp,
+				worktree: fst.Worktree,
+				staging:  fst.Staging,
+				mtime:    mtime,
+			}) {
+				return nil
+			}
+		}
+		return nil
+	})
 }

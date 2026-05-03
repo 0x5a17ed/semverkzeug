@@ -9,6 +9,7 @@ require (
 	github.com/fatih/color v1.19.0
 	github.com/go-git/go-billy/v5 v5.8.0
 	github.com/go-git/go-git/v5 v5.18.0
+	github.com/google/renameio/v2 v2.0.2
 	github.com/mattn/go-isatty v0.0.20
 	github.com/stretchr/testify v1.11.1
 )

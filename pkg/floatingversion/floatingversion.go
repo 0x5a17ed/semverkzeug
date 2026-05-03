@@ -62,7 +62,7 @@ func Describe(
 	cx *gitrepo.Context,
 	guide *gitrepo.Guide,
 ) (gitrepo.VersionSpec, error) {
-	mtime, err := gitrepo.FindWorktreeMTime(cx)
+	mtime, err := gitrepo.FindStableWorktreeMTime(cx)
 	switch {
 	case errors.Is(err, git.ErrIsBareRepository):
 		err = nil // Ignore.

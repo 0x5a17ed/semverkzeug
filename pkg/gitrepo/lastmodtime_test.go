@@ -17,6 +17,8 @@
 package gitrepo_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 	"time"
 
@@ -28,17 +30,32 @@ import (
 	"github.com/0x5a17ed/semverkzeug/pkg/internal/gitfixture"
 )
 
-func TestLastModificationTime(t *testing.T) {
-	t.Run("clean repo returns error", func(t *testing.T) {
+func maxEntryMTime(entries []gitrepo.DirtyEntry) time.Time {
+	var t time.Time
+	for _, e := range entries {
+		if e.ModTime().After(t) {
+			t = e.ModTime()
+		}
+	}
+	return t
+}
+
+func collectErr[T any](s iter.Seq[T], doneFn func() error) ([]T, error) {
+	out := slices.Collect(s)
+	return out, doneFn()
+}
+
+func TestFindDirtyEntries(t *testing.T) {
+	t.Run("clean repo returns no entries", func(t *testing.T) {
 		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
-		mtime, err := gitrepo.FindWorktreeMTime(scope)
-		require.ErrorIs(t, err, gitrepo.ErrWorktreeClean)
+		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
+		require.NoError(t, err)
 
-		assert.Nil(t, mtime)
+		assert.Empty(t, entries)
 	})
 
-	t.Run("consider untracked files", func(t *testing.T) {
+	t.Run("considers untracked files", func(t *testing.T) {
 		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
 		gitfixture.WriteFile(t, scope, "/baa", "baz")
@@ -47,11 +64,10 @@ func TestLastModificationTime(t *testing.T) {
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		// Assert that the mtime of the untracked file is reported.
-		mtime, err := gitrepo.FindWorktreeMTime(scope)
+		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
 		require.NoError(t, err)
 
-		assert.WithinDuration(t, after, *mtime, 100*time.Millisecond)
+		assert.WithinDuration(t, after, maxEntryMTime(entries), 100*time.Millisecond)
 	})
 
 	t.Run("modified file mtime", func(t *testing.T) {
@@ -64,10 +80,10 @@ func TestLastModificationTime(t *testing.T) {
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		mtime, err := gitrepo.FindWorktreeMTime(scope)
+		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
 		require.NoError(t, err)
 
-		assert.WithinDuration(t, after, *mtime, 100*time.Millisecond)
+		assert.WithinDuration(t, after, maxEntryMTime(entries), 100*time.Millisecond)
 	})
 
 	t.Run("deleted file reports parent directory mtime", func(t *testing.T) {
@@ -87,10 +103,10 @@ func TestLastModificationTime(t *testing.T) {
 		// Optional sanity check: never goes backwards.
 		assert.False(t, after.Before(before), "mtime should not go backwards")
 
-		mtime, err := gitrepo.FindWorktreeMTime(scope)
+		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
 		require.NoError(t, err)
 
-		assert.WithinDuration(t, after, *mtime, 100*time.Millisecond)
+		assert.WithinDuration(t, after, maxEntryMTime(entries), 100*time.Millisecond)
 	})
 
 	t.Run("deleted directory reports parent directory mtime", func(t *testing.T) {
@@ -105,9 +121,9 @@ func TestLastModificationTime(t *testing.T) {
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		mtime, err := gitrepo.FindWorktreeMTime(scope)
+		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
 		require.NoError(t, err)
 
-		assert.WithinDuration(t, after, *mtime, 100*time.Millisecond)
+		assert.WithinDuration(t, after, maxEntryMTime(entries), 100*time.Millisecond)
 	})
 }

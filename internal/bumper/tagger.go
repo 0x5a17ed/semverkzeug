@@ -102,7 +102,7 @@ func CreateTag(
 
 	} else {
 		// Fall back to tag creation via internal implementation.
-		tagRef, err = createTagVirtual(cx, ref, nextLabel, message)
+		tagRef, err = createTagInternal(cx, ref, nextLabel, message)
 		if err != nil {
 			return nil, err
 		}
@@ -112,8 +112,8 @@ func CreateTag(
 	return tagRef, nil
 }
 
-// createTagVirtual creates a tag using the internal implementation.
-func createTagVirtual(
+// createTagInternal creates a tag using the internal implementation.
+func createTagInternal(
 	cx *gitrepo.Context,
 	ref *plumbing.Reference,
 	label string,

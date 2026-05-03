@@ -74,6 +74,19 @@ func (s Scope) String() string {
 	return s.path
 }
 
+// UnmarshalText parses raw via [ParseScope] and writes the result into
+// s.  It satisfies [encoding.TextUnmarshaler] so callers (CLI parsers,
+// JSON, env loaders, ...) can decode straight into the strong type
+// rather than hand-rolling validation around a string field.
+func (s *Scope) UnmarshalText(raw []byte) error {
+	parsed, err := ParseScope(string(raw))
+	if err != nil {
+		return err
+	}
+	*s = parsed
+	return nil
+}
+
 // IsRoot reports whether s is the root scope.
 func (s Scope) IsRoot() bool { return s.path == "" }
 

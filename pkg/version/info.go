@@ -17,22 +17,27 @@
 package version
 
 import (
-	"fmt"
 	"runtime/debug"
 	"slices"
 )
 
-var Version = ""
+var Version = "dev"
 
-func GetVersion() (string, error) {
-	bi, ok := debug.ReadBuildInfo()
-	if ok && !slices.Contains([]string{"", "(devel)"}, bi.Main.Version) {
-		return bi.Main.Version, nil
-	}
-
+func initVersion() {
 	if Version != "" {
-		return Version, nil
+		return
 	}
 
-	return "", fmt.Errorf("no version was baked into the command")
+	bi, ok := debug.ReadBuildInfo()
+	if !ok {
+		return
+	}
+
+	if !slices.Contains([]string{"", "(devel)"}, bi.Main.Version) {
+		Version = bi.Main.Version
+	}
+}
+
+func init() {
+	initVersion()
 }

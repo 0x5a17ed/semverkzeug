@@ -35,6 +35,7 @@ var (
 	stepPrefix    = color.New(color.FgGreen, color.Bold)
 	substepPrefix = color.New(color.FgBlue, color.Bold)
 	hintPrefix    = color.New(color.FgYellow, color.Bold)
+	errorPrefix   = color.New(color.FgRed, color.Bold)
 	boldText      = color.New(color.Bold)
 
 	// out is the destination for all messages.  Stderr keeps stdout
@@ -65,5 +66,11 @@ func Substep(format string, args ...any) {
 // Hint prints a parenthetical aside.
 func Hint(format string, args ...any) {
 	_, _ = hintPrefix.Fprint(out, "   :: ")
+	_, _ = fmt.Fprintln(out, fmt.Sprintf(format, args...))
+}
+
+// Error prints a pacman/makepkg-style error line.
+func Error(format string, args ...any) {
+	_, _ = errorPrefix.Fprint(out, "==> ERROR: ")
 	_, _ = fmt.Fprintln(out, fmt.Sprintf(format, args...))
 }

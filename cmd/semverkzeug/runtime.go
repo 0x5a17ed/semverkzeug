@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 2022 individual contributors
+ * Copyright(C) 2026 the semverkzeug developers
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * language governing permissions and limitations under the License.
  */
 
-package rootcmd
+package main
 
 import (
 	"errors"
@@ -22,19 +22,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-git/go-git/v5"
-	"github.com/spf13/cobra"
+	"github.com/go-git/go-git/v5/plumbing"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/cli"
-	"github.com/0x5a17ed/semverkzeug/pkg/cli/bumpcmd"
-	"github.com/0x5a17ed/semverkzeug/pkg/cli/describecmd"
-	"github.com/0x5a17ed/semverkzeug/pkg/cli/versioncmd"
 	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
-	"github.com/0x5a17ed/semverkzeug/pkg/version"
-)
-
-var (
-	repoPath string
 )
 
 // scopeForRepoPath resolves p into a tag scope relative to the
@@ -81,60 +71,57 @@ func scopeForRepoPath(repo *gitrepo.Context, p string) (gitrepo.Scope, error) {
 	return gitrepo.ParseScope(relPath)
 }
 
-func persistentPreRunE(cmd *cobra.Command, args []string) (err error) {
+// provideRepo opens the git repository pointed at by --repo (or $PWD
+// when --repo is unset).  It is registered with kong as a singleton
+// provider so that multiple Run() arguments resolve to the same
+// gitrepo.Context per invocation.
+func provideRepo(root *cli) (*gitrepo.Context, error) {
+	repoPath := root.Repo
 	if repoPath == "" {
 		var err error
 		if repoPath, err = os.Getwd(); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	cx, err := gitrepo.NewContextFromPath(repoPath)
-	switch {
-	case errors.Is(err, git.ErrRepositoryNotExists):
-		return nil
-	case err != nil:
-		return fmt.Errorf("create git context: %w", err)
-	}
-
-	scope, err := scopeForRepoPath(cx, repoPath)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("create git context: %w", err)
 	}
-
-	ctx := cli.WithGitContext(cmd.Context(), cx)
-	ctx = cli.WithScope(ctx, scope)
-	cmd.SetContext(ctx)
-	return
+	return cx, nil
 }
 
-func Command() *cobra.Command {
-	c := &cobra.Command{
-		Use:   "semverkzeug",
-		Short: "versioning tool for git repositories",
-
-		PersistentPreRunE: persistentPreRunE,
+// provideHead resolves the repository's HEAD reference.  An empty
+// repository (HEAD missing) is reported as a nil reference rather
+// than an error so commands can decide how to react.
+func provideHead(repo *gitrepo.Context) (*plumbing.Reference, error) {
+	head, err := repo.Repository().Head()
+	if err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return nil, err
 	}
-
-	if v, err := version.GetVersion(); err == nil {
-		c.Flags().Bool("version", false, "version for this command")
-		_ = c.Flags().MarkHidden("version")
-
-		c.Version = v
-	}
-
-	pfs := c.PersistentFlags()
-	pfs.StringVarP(&repoPath, "repo", "r", "", "git repository path (default is $PWD)")
-
-	c.AddCommand(describecmd.Command())
-	c.AddCommand(bumpcmd.Command())
-	c.AddCommand(versioncmd.Command())
-
-	return c
+	return head, nil
 }
 
-func Execute(args []string) error {
-	c := Command()
-	c.SetArgs(args)
-	return c.Execute()
+type scopeProvider interface {
+	Scope() *gitrepo.Scope
+}
+
+// effectiveScope returns the scope a command should operate on.
+//
+// An explicit non-root override (typically the per-command positional
+// argument) wins; otherwise the scope is derived from --repo (or
+// $PWD), preserving the legacy "infer scope from path" behaviour.
+func effectiveScope(root *cli, repo *gitrepo.Context, overrider scopeProvider) (gitrepo.Scope, error) {
+	if s := overrider.Scope(); s != nil {
+		return *s, nil
+	}
+
+	repoPath := root.Repo
+	if repoPath == "" {
+		var err error
+		if repoPath, err = os.Getwd(); err != nil {
+			return gitrepo.Scope{}, err
+		}
+	}
+	return scopeForRepoPath(repo, repoPath)
 }

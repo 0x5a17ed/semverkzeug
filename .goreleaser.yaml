@@ -1,0 +1,87 @@
+version: 2
+
+project_name: semverkzeug
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: semverkzeug
+    main: ./cmd/semverkzeug
+    binary: semverkzeug
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -buildvcs=true
+    ldflags:
+      - -w -s -X main.Version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    goamd64:
+      - v2
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Version }}-next"
+
+dockers_v2:
+  - id: semverkzeug
+    images:
+      - "ghcr.io/0x5a17ed/semverkzeug"
+    tags:
+      - "{{ .Version }}"
+      - "latest"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    dockerfile: Dockerfile
+    labels:
+      org.opencontainers.image.source: "https://github.com/0x5a17ed/semverkzeug"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.licenses: "Apache-2.0"
+
+signs:
+  - id: cosign-checksums
+    cmd: cosign
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - --yes
+      - --output-signature=${signature}
+      - --output-certificate=${certificate}
+      - ${artifact}
+    artifacts: checksum
+    output: true
+
+docker_signs:
+  - cmd: cosign
+    artifacts: ''
+    args:
+      - sign
+      - --yes
+      - ${artifact}@${digest}
+    output: true
+
+release:
+  draft: false
+  prerelease: auto

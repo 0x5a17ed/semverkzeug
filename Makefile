@@ -8,11 +8,14 @@ SHELL := bash
 
 GOFLAGS_COMMON := -buildvcs=true -trimpath
 
+GOOS ?= linux
+GOARCH ?= amd64
+
 SRC := $(shell find . -type f -name '*.go')
 
 dist/$(BINARY_NAME): GOFLAGS = $(GOFLAGS_COMMON) -ldflags "-w -s -X=main.Version=$(VERSION)"
 dist/$(BINARY_NAME): $(SRC) go.mod go.sum
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOAMD64=v2 go build $(GOFLAGS) -o $@ ./cmd/$(BINARY_NAME)
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) GOAMD64=v2 go build $(GOFLAGS) -o $@ ./cmd/$(BINARY_NAME)
 
 .PHONY: clean
 clean:

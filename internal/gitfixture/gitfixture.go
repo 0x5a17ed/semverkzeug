@@ -28,7 +28,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 )
 
 var TestSig = &object.Signature{

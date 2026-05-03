@@ -30,8 +30,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/storage/filesystem"
 
+	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 	"github.com/0x5a17ed/semverkzeug/internal/uiprint"
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
 )
 
 func CreateTag(

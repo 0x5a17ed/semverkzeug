@@ -19,8 +19,8 @@ package main
 import (
 	"github.com/go-git/go-git/v5/plumbing"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/bumper"
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/internal/bumper"
+	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 )
 
 // bumpParts maps the user-facing part name to the bumper.Part value.

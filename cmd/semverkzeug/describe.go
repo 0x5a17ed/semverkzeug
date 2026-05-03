@@ -21,8 +21,8 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/floatingversion"
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/internal/floatingversion"
+	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 )
 
 type describeCmd struct {

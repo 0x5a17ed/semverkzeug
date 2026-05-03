@@ -25,9 +25,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/floatingversion"
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
-	"github.com/0x5a17ed/semverkzeug/pkg/internal/gitfixture"
+	"github.com/0x5a17ed/semverkzeug/internal/floatingversion"
+	"github.com/0x5a17ed/semverkzeug/internal/gitfixture"
+	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 )
 
 type repositoryProvider func(t *testing.T) *gitrepo.Context

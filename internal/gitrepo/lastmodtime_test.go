@@ -26,8 +26,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
-	"github.com/0x5a17ed/semverkzeug/pkg/internal/gitfixture"
+	"github.com/0x5a17ed/semverkzeug/internal/gitfixture"
+	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 )
 
 func maxEntryMTime(entries []gitrepo.DirtyEntry) time.Time {

@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 )
 
 // scopeForRepoPath resolves p into a tag scope relative to the

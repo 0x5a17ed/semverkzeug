@@ -24,7 +24,7 @@ import (
 
 	"github.com/go-git/go-git/v5"
 
-	"github.com/0x5a17ed/semverkzeug/pkg/gitrepo"
+	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 )
 
 var devLabelRegexp = regexp.MustCompile(`(^|\.)dev(\.[0-9][0-9A-Za-z]*)*(\.|$)`)

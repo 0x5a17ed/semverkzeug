@@ -30,7 +30,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-git/go-git/v5/storage/filesystem"
 	"github.com/google/renameio/v2"
 )
 
@@ -59,13 +58,11 @@ type devState struct {
 // Returns "" and false when the repository is not backed by an OS filesystem (in
 // which case persistence is not possible and silently skipped).
 func devStatePath(cx *Context) (string, bool) {
-	s, ok := cx.Repository().Storer.(*filesystem.Storage)
-	if !ok || s == nil || s.Filesystem() == nil {
+	p, ok := cx.DotGitPath()
+	if !ok {
 		return "", false
 	}
-
-	p := filepath.Join(s.Filesystem().Root(), devStateRelPath)
-	return p, true
+	return filepath.Join(p, devStateRelPath), true
 }
 
 // loadDevState reads the persisted state. A missing file yields a nil

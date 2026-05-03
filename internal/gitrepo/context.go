@@ -82,6 +82,25 @@ func (cx *Context) Repository() *git.Repository {
 	return cx.repo
 }
 
+// DotGitFilesystem returns the filesystem abstraction layer for
+// accessing the dot-git directory.
+func (cx *Context) DotGitFilesystem() billy.Filesystem {
+	st, ok := cx.Repository().Storer.(*filesystem.Storage)
+	if !ok || st == nil {
+		return nil
+	}
+	return st.Filesystem()
+}
+
+// DotGitPath returns the path to the .git directory.
+func (cx *Context) DotGitPath() (string, bool) {
+	fsys := cx.DotGitFilesystem()
+	if fsys == nil {
+		return "", false
+	}
+	return fsys.Root(), true
+}
+
 // LoadWorktree returns a worktree for the repository.
 func (cx *Context) LoadWorktree() (*git.Worktree, error) {
 	cx.wt.once.Do(func() {

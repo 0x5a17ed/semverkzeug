@@ -28,7 +28,6 @@ import (
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/storage/filesystem"
 
 	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 	"github.com/0x5a17ed/semverkzeug/internal/uiprint"
@@ -92,10 +91,9 @@ func CreateTag(
 	var tagRef *plumbing.Reference
 
 	// Check if the repository is backed by a filesystem storage.
-	st, ok := cx.Repository().Storer.(*filesystem.Storage)
-	if ok && st != nil && st.Filesystem() != nil {
+	if p, hasStorage := cx.DotGitPath(); hasStorage {
 		// Use the native git implementation to ensure consistency with other git commands.
-		tagRef, err = createTagNative(cx, ref, nextLabel, message, st.Filesystem().Root())
+		tagRef, err = createTagNative(cx, ref, nextLabel, message, p)
 		if err != nil {
 			return nil, err
 		}

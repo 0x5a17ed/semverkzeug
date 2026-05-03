@@ -27,7 +27,6 @@ import (
 	"github.com/0x5a17ed/xit"
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/storage/filesystem"
 )
 
 var (
@@ -105,12 +104,12 @@ func findMTimePath(vfs billy.Filesystem, fp string) (time.Time, error) {
 // a nil time without error for in-memory storage or when the index
 // has not yet been created.
 func findIndexMTime(cx *Context) (*time.Time, error) {
-	s, ok := cx.Repository().Storer.(*filesystem.Storage)
-	if !ok || s == nil || s.Filesystem() == nil {
+	fsys := cx.DotGitFilesystem()
+	if fsys == nil {
 		return nil, nil
 	}
 
-	fi, err := s.Filesystem().Stat("index")
+	fi, err := fsys.Stat("index")
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, nil

@@ -1,41 +1,61 @@
-# semverkzeug 🛠️
+<h1 align="center"><code>semverkzeug</code></h1>
+<br>
+Automatic semantic version strings derived from your git tag history. Language-agnostic, single binary, no project config required.
 
-Another stab at the old problem of handling semantic versioning.
+```console
+$ semverkzeug describe
+v0.0.1-dev.260506T10351400Z
+```
+The version above was derived automatically from the latest git tag plus a timestamp from your repository's working-tree state.
 
-What makes *semverkzeug* compelling is its automatic behavior of generating versions similar to what [setuptools_scm](https://github.com/pypa/setuptools_scm/) does while being easy to install and portable thanks to *semverkzeug* being written in [Go](https://go.dev/).
+Comparable in spirit to [setuptools_scm](https://github.com/pypa/setuptools_scm/), but language-agnostic and shipped as a single [Go](https://go.dev/) binary, easy to install locally, trivial to drop into any CI environment.
 
 
-## 🎯 Goals
+## Goals
 
-Semverkzeug aims to be a **simple** tool for automatically handling [Semantic Versioning 2.0.0](https://semver.org/#semantic-versioning-200) compliant version strings for any kind of software project in a language and packaging method agnostic way.
+Semverkzeug aims to help you stop thinking about version numbers. It tells you the current version from your git tag history and bumps it — major, minor, or patch level — when you ask, following [Semantic Versioning 2.0.0](https://semver.org/#semantic-versioning-200) throughout. No commit-message convention required, no version file, no project config.
 
 
 ### Non-Goals
 
+* forcing a commit message convention on you
 * generating a changelog for you
 * triggering your build-system for you
 * uploading tagged releases anywhere
 
 
-## 📦 Installation
+## Installation
 
 ```console
 foo@bar:~ $ go install github.com/0x5a17ed/semverkzeug/cmd/semverkzeug@latest
 ```
 
 
-## 🤔 Usage
+## Usage
+
+### Inspecting the current version
 
 ```console
 foo@bar:~/git/myproject $ semverkzeug describe 
-v0.3.1-dev.0.20220513192209
+v0.0.1-dev.260506T10351400Z
+```
+
+### Bumping the current version
+
+```console
+foo@bar:~/git/myproject $ semverkzeug bump patch
+==> Creating annotated tag [v0.0.1]
+ -> Target: e6f3fa7 (initial code import)
+ -> Running: git tag -a -F - v0.0.1 e6f3fa7127fd385f44ed28346cbab27a4f9148be
+   :: git may pause here waiting for signing (touch your security key if prompted)
+==> Created tag [v0.0.1]
 ```
 
 
-## 💡 Features
+## Features
 
-- provides floating versions based on the state of a git repository
-- supports bumping your software's version and creating a git tag
+- automatically derives the next development version from git tag history and working-tree state
+- bumps the released version and creates an annotated, optionally signed git tag
 
 
 ## ☝️ Is it any good?

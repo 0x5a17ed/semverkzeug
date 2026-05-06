@@ -71,7 +71,7 @@ func CreateTag(
 		return nil, fmt.Errorf("tag %q already exists", nextLabel)
 	}
 
-	uiprint.Step("Creating annotated tag %s", nextLabel)
+	uiprint.Step("Creating annotated tag [%s]", nextLabel)
 
 	var message string
 	if len(guide.Tags) == 0 {

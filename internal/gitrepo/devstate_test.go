@@ -48,7 +48,7 @@ func TestFindStableWorktreeMTime(t *testing.T) {
 
 	t.Run("first call persists state file", func(t *testing.T) {
 		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
-		gitfixture.WriteFile(t, cx, "foo", "baz")
+		gitfixture.WriteRepoFile(t, cx, "foo", "baz")
 
 		_, err := gitrepo.FindStableWorktreeMTime(cx)
 		require.NoError(t, err)
@@ -60,7 +60,7 @@ func TestFindStableWorktreeMTime(t *testing.T) {
 
 	t.Run("stability: index mtime drift does not perturb output", func(t *testing.T) {
 		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
-		gitfixture.WriteFile(t, cx, "foo", "baz")
+		gitfixture.WriteRepoFile(t, cx, "foo", "baz")
 
 		first, err := gitrepo.FindStableWorktreeMTime(cx)
 		require.NoError(t, err)
@@ -83,7 +83,7 @@ func TestFindStableWorktreeMTime(t *testing.T) {
 
 	t.Run("monotonicity: backwards candidate yields floor + tick", func(t *testing.T) {
 		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
-		gitfixture.WriteFile(t, cx, "foo", "baz")
+		gitfixture.WriteRepoFile(t, cx, "foo", "baz")
 
 		first, err := gitrepo.FindStableWorktreeMTime(cx)
 		require.NoError(t, err)
@@ -91,7 +91,7 @@ func TestFindStableWorktreeMTime(t *testing.T) {
 
 		// Make a real change (different content, different mtime so the
 		// fingerprint is invalidated) and force everything backwards.
-		gitfixture.WriteFile(t, cx, "foo", "qux")
+		gitfixture.WriteRepoFile(t, cx, "foo", "qux")
 		wtRoot := gitfixture.Filesystem(t, cx).Root()
 		past := first.Add(-2 * time.Hour)
 		require.NoError(t, os.Chtimes(filepath.Join(wtRoot, "foo"), past, past))
@@ -109,13 +109,13 @@ func TestFindStableWorktreeMTime(t *testing.T) {
 
 	t.Run("forward change advances normally", func(t *testing.T) {
 		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
-		gitfixture.WriteFile(t, cx, "foo", "baz")
+		gitfixture.WriteRepoFile(t, cx, "foo", "baz")
 
 		first, err := gitrepo.FindStableWorktreeMTime(cx)
 		require.NoError(t, err)
 		require.NotNil(t, first)
 
-		gitfixture.WriteFile(t, cx, "foo", "quux")
+		gitfixture.WriteRepoFile(t, cx, "foo", "quux")
 		wtRoot := gitfixture.Filesystem(t, cx).Root()
 		future := first.Add(2 * time.Hour)
 		require.NoError(t, os.Chtimes(filepath.Join(wtRoot, "foo"), future, future))
@@ -130,7 +130,7 @@ func TestFindStableWorktreeMTime(t *testing.T) {
 
 	t.Run("repeated calls with no changes are idempotent", func(t *testing.T) {
 		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
-		gitfixture.WriteFile(t, cx, "foo", "baz")
+		gitfixture.WriteRepoFile(t, cx, "foo", "baz")
 
 		first, err := gitrepo.FindStableWorktreeMTime(cx)
 		require.NoError(t, err)

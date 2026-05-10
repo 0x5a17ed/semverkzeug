@@ -7,7 +7,9 @@ require (
 	github.com/0x5a17ed/xit v0.3.0
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alecthomas/kong v1.15.0
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/fatih/color v1.19.0
+	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376
 	github.com/go-git/go-billy/v5 v5.8.0
 	github.com/go-git/go-git/v5 v5.18.0
 	github.com/google/renameio/v2 v2.0.2
@@ -23,7 +25,6 @@ require (
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.6.0 // indirect

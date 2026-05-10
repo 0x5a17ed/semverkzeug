@@ -47,81 +47,81 @@ func collectErr[T any](s iter.Seq[T], doneFn func() error) ([]T, error) {
 
 func TestFindDirtyEntries(t *testing.T) {
 	t.Run("clean repo returns no entries", func(t *testing.T) {
-		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
+		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
-		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
+		entries, err := collectErr(gitrepo.IterDirtyEntries(cx))
 		require.NoError(t, err)
 
 		assert.Empty(t, entries)
 	})
 
 	t.Run("considers untracked files", func(t *testing.T) {
-		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
+		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
-		gitfixture.WriteFile(t, scope, "/baa", "baz")
+		gitfixture.WriteRepoFile(t, cx, "/baa", "baz")
 
-		inf, err := gitfixture.Worktree(t, scope).Filesystem.Stat("/baa")
+		inf, err := gitfixture.Filesystem(t, cx).Stat("/baa")
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
+		entries, err := collectErr(gitrepo.IterDirtyEntries(cx))
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, after, maxEntryMTime(entries), 100*time.Millisecond)
 	})
 
 	t.Run("modified file mtime", func(t *testing.T) {
-		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
+		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
 		// Modify the file to ensure the repo reports a dirty state.
-		gitfixture.WriteFile(t, scope, "/foo", "baz")
+		gitfixture.WriteRepoFile(t, cx, "/foo", "baz")
 
-		inf, err := gitfixture.Filesystem(t, scope).Stat("/foo")
+		inf, err := gitfixture.Filesystem(t, cx).Stat("/foo")
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
+		entries, err := collectErr(gitrepo.IterDirtyEntries(cx))
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, after, maxEntryMTime(entries), 100*time.Millisecond)
 	})
 
 	t.Run("deleted file reports parent directory mtime", func(t *testing.T) {
-		scope := gitfixture.RepoWithOneCommitNoTagsClean(t)
+		cx := gitfixture.RepoWithOneCommitNoTagsClean(t)
 
-		dirInfoBefore, err := gitfixture.Filesystem(t, scope).Stat("/")
+		dirInfoBefore, err := gitfixture.Filesystem(t, cx).Stat("/")
 		require.NoError(t, err)
 		before := dirInfoBefore.ModTime().UTC()
 
-		err = gitfixture.Filesystem(t, scope).Remove("/foo")
+		err = gitfixture.Filesystem(t, cx).Remove("/foo")
 		require.NoError(t, err)
 
-		dirInfoAfter, err := gitfixture.Filesystem(t, scope).Stat("/")
+		dirInfoAfter, err := gitfixture.Filesystem(t, cx).Stat("/")
 		require.NoError(t, err)
 		after := dirInfoAfter.ModTime().UTC()
 
 		// Optional sanity check: never goes backwards.
 		assert.False(t, after.Before(before), "mtime should not go backwards")
 
-		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
+		entries, err := collectErr(gitrepo.IterDirtyEntries(cx))
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, after, maxEntryMTime(entries), 100*time.Millisecond)
 	})
 
 	t.Run("deleted directory reports parent directory mtime", func(t *testing.T) {
-		scope := gitfixture.RepoEmpty(t)
+		cx := gitfixture.RepoEmpty(t)
 
-		gitfixture.CommitFile(t, scope, "foo/baa/baz", "bar")
+		gitfixture.CommitFile(t, cx, "foo/baa/baz", "bar")
 
-		err := util.RemoveAll(gitfixture.Filesystem(t, scope), "/foo")
+		err := util.RemoveAll(gitfixture.Filesystem(t, cx), "/foo")
 		require.NoError(t, err)
 
-		inf, err := gitfixture.Filesystem(t, scope).Stat("/")
+		inf, err := gitfixture.Filesystem(t, cx).Stat("/")
 		require.NoError(t, err)
 		after := inf.ModTime().UTC()
 
-		entries, err := collectErr(gitrepo.IterDirtyEntries(scope))
+		entries, err := collectErr(gitrepo.IterDirtyEntries(cx))
 		require.NoError(t, err)
 
 		assert.WithinDuration(t, after, maxEntryMTime(entries), 100*time.Millisecond)

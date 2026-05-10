@@ -19,14 +19,13 @@ package gitrepo
 import (
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"sync"
 
 	"github.com/go-git/go-billy/v5"
-	"github.com/go-git/go-billy/v5/osfs"
 	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
-	"github.com/go-git/go-git/v5/storage/filesystem"
-	"github.com/go-git/go-git/v5/storage/memory"
+	storagevfs "github.com/go-git/go-git/v5/storage/filesystem"
+	storagemem "github.com/go-git/go-git/v5/storage/memory"
 )
 
 type Context struct {
@@ -45,20 +44,6 @@ func (cx *Context) loadWorktreeOnce() (*git.Worktree, error) {
 		return nil, fmt.Errorf("get worktree: %w", err)
 	}
 
-	rootFS := osfs.New("/")
-
-	systemPatterns, err := gitignore.LoadSystemPatterns(rootFS)
-	if err != nil {
-		return nil, fmt.Errorf("load system gitignore patterns: %w", err)
-	}
-	wt.Excludes = append(wt.Excludes, systemPatterns...)
-
-	globalPatterns, err := gitignore.LoadGlobalPatterns(rootFS)
-	if err != nil {
-		return nil, fmt.Errorf("load global gitignore patterns: %w", err)
-	}
-	wt.Excludes = append(wt.Excludes, globalPatterns...)
-
 	return wt, nil
 }
 
@@ -66,9 +51,9 @@ func (cx *Context) String() string {
 	var repoString string
 	if cx.repo == nil {
 		repoString = "<nil>"
-	} else if st, ok := cx.repo.Storer.(*filesystem.Storage); ok {
+	} else if st, ok := cx.repo.Storer.(*storagevfs.Storage); ok {
 		repoString = fmt.Sprintf("<filesystem:path=%s>", new(url.URL{Path: st.Filesystem().Root()}).String())
-	} else if _, ok := cx.repo.Storer.(*memory.Storage); ok {
+	} else if _, ok := cx.repo.Storer.(*storagemem.Storage); ok {
 		repoString = "<memory>"
 	} else {
 		repoString = "<unknown>"
@@ -85,7 +70,7 @@ func (cx *Context) Repository() *git.Repository {
 // DotGitFilesystem returns the filesystem abstraction layer for
 // accessing the dot-git directory.
 func (cx *Context) DotGitFilesystem() billy.Filesystem {
-	st, ok := cx.Repository().Storer.(*filesystem.Storage)
+	st, ok := cx.Repository().Storer.(*storagevfs.Storage)
 	if !ok || st == nil {
 		return nil
 	}
@@ -117,6 +102,22 @@ func (cx *Context) LoadWorktreeFilesystem() (billy.Filesystem, error) {
 		return nil, fmt.Errorf("load worktree: %w", err)
 	}
 	return wt.Filesystem, nil
+}
+
+// LoadWorktreeRoot returns the absolute path to the repository worktree root
+// or an error if the worktree is not available.
+func (cx *Context) LoadWorktreeRoot() (string, error) {
+	wtFsys, err := cx.LoadWorktreeFilesystem()
+	if err != nil {
+		return "", fmt.Errorf("load worktree filesystem: %w", err)
+	}
+
+	rootPath, err := filepath.Abs(wtFsys.Root())
+	if err != nil {
+		return "", fmt.Errorf("resolve worktree root path: %w", err)
+	}
+
+	return rootPath, nil
 }
 
 // NewContextFromRepo creates a new Context instance from the provided git repository.

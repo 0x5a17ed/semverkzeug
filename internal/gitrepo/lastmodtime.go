@@ -139,7 +139,7 @@ func (e *DirtyEntry) ModTime() time.Time             { return e.mtime }
 // that no longer exist), along with the index file's mtime if available.
 func IterDirtyEntries(cx *Context) (iter.Seq[DirtyEntry], func() error) {
 	return xit.Perform(func(yield func(DirtyEntry) bool) error {
-		wt, err := cx.LoadWorktree()
+		wtFsys, err := cx.LoadWorktreeFilesystem()
 		if err != nil {
 			return fmt.Errorf("load worktree: %w", err)
 		}
@@ -154,7 +154,7 @@ func IterDirtyEntries(cx *Context) (iter.Seq[DirtyEntry], func() error) {
 				continue
 			}
 
-			mtime, err := findMTimePath(wt.Filesystem, fp)
+			mtime, err := findMTimePath(wtFsys, fp)
 			if err != nil {
 				return fmt.Errorf("find mtime for %q: %w", fp, err)
 			}

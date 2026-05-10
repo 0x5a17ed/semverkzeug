@@ -88,7 +88,7 @@ func TestDescribe_DirtyPrereleaseTagMustSortAbove(t *testing.T) {
 	cx := gitfixture.RepoEmpty(t)
 	gitfixture.CommitFile(t, cx, "foo", "baa")
 	gitfixture.CreateTag(t, cx, "v1.0.0-rc.1")
-	gitfixture.WriteFile(t, cx, "foo", "baz")
+	gitfixture.WriteRepoFile(t, cx, "foo", "baz")
 
 	head, err := cx.Repository().Head()
 	require.NoError(t, err)
@@ -140,7 +140,7 @@ func TestDescribe_DirtyDevPrereleaseReplacesCounter(t *testing.T) {
 			cx := gitfixture.RepoEmpty(t)
 			gitfixture.CommitFile(t, cx, "foo", "baa")
 			gitfixture.CreateTag(t, cx, tt.args.tag)
-			gitfixture.WriteFile(t, cx, "foo", "baz")
+			gitfixture.WriteRepoFile(t, cx, "foo", "baz")
 
 			head, err := cx.Repository().Head()
 			require.NoError(t, err)

@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 
 	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
@@ -46,15 +47,11 @@ func scopeForRepoPath(repo *gitrepo.Context, p string) (gitrepo.Scope, error) {
 
 	// Discover the repository root from the checked-out worktree.
 	// If no worktree is available, fall back to the root scope.
-	wt, err := repo.LoadWorktree()
-	if err != nil {
+	rootPath, err := repo.LoadWorktreeRoot()
+	switch {
+	case errors.Is(err, git.ErrIsBareRepository):
 		return gitrepo.RootScope(), nil
-	}
-
-	// Normalize the worktree root to an absolute path to keep comparison
-	// logic consistent with absPath above.
-	rootPath, err := filepath.Abs(wt.Filesystem.Root())
-	if err != nil {
+	case err != nil:
 		return gitrepo.Scope{}, err
 	}
 

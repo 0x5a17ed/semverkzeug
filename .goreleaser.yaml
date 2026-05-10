@@ -51,7 +51,7 @@ dockers_v2:
     platforms:
       - linux/amd64
       - linux/arm64
-    dockerfile: Dockerfile
+    dockerfile: docker/Dockerfile
     labels:
       org.opencontainers.image.source: "https://github.com/0x5a17ed/semverkzeug"
       org.opencontainers.image.version: "{{ .Version }}"

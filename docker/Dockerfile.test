@@ -1,0 +1,9 @@
+ARG GO_TEST_BASE_IMAGE=docker.io/library/golang:1.26-trixie
+
+FROM ${GO_TEST_BASE_IMAGE}
+
+RUN set -eux; \
+	apt-get update; \
+	apt-get install -y --no-install-recommends ca-certificates git; \
+	rm -rf /var/lib/apt/lists/*; \
+	git --version

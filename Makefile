@@ -2,6 +2,13 @@ BINARY_NAME := semverkzeug
 
 VERSION = $(shell go run ./cmd/semverkzeug describe)
 
+CONTAINER_COMPOSE ?= docker compose
+CONTAINER_COMPOSE_FILE ?= docker/compose.yaml
+CONTAINER_TEST_SERVICE ?= test
+GO_TEST_BASE_IMAGE ?= docker.io/library/golang:1.26-trixie
+GO_TEST_IMAGE ?= localhost/semverkzeug-test:go1.26-trixie
+GO_TEST_FLAGS ?= -v ./...
+
 SHELL := bash
 .ONESHELL:
 .SHELLFLAGS := -eu -o pipefail -c
@@ -23,4 +30,11 @@ clean:
 
 .PHONY: test
 test:
-	go test -v ./...
+	go test $(GO_TEST_FLAGS)
+
+.PHONY: test-containerized
+test-containerized:
+	env GO_TEST_BASE_IMAGE="$(GO_TEST_BASE_IMAGE)" GO_TEST_IMAGE="$(GO_TEST_IMAGE)" GO_TEST_FLAGS="$(GO_TEST_FLAGS)" \
+		$(CONTAINER_COMPOSE) -f $(CONTAINER_COMPOSE_FILE) build $(CONTAINER_TEST_SERVICE)
+	env GO_TEST_BASE_IMAGE="$(GO_TEST_BASE_IMAGE)" GO_TEST_IMAGE="$(GO_TEST_IMAGE)" GO_TEST_FLAGS="$(GO_TEST_FLAGS)" \
+		$(CONTAINER_COMPOSE) -f $(CONTAINER_COMPOSE_FILE) run --rm $(CONTAINER_TEST_SERVICE)

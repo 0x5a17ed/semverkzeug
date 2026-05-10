@@ -1,0 +1,29 @@
+---
+name: semverkzeug
+
+services:
+  test:
+    build:
+      context: ".."
+      dockerfile: docker/Dockerfile.test
+      args:
+        GO_TEST_BASE_IMAGE: "${GO_TEST_BASE_IMAGE:-docker.io/library/golang:1.26-trixie}"
+    image: ${GO_TEST_IMAGE:-localhost/semverkzeug-test:go1.26-trixie}
+    working_dir: /workspace
+    entrypoint: ["/bin/sh"]
+    command: ["-c", "go test $${GO_TEST_FLAGS}"]
+    environment:
+      HOME: /tmp/home
+      GOCACHE: /cache/go-build
+      GOMODCACHE: /cache/go-mod
+      GO_TEST_FLAGS: ${GO_TEST_FLAGS:--v ./...}
+    volumes:
+      - "..:/workspace:ro"
+      - "go-build-cache:/cache/go-build"
+      - "go-mod-cache:/cache/go-mod"
+    tmpfs:
+      - "/tmp:exec,mode=1777"
+
+volumes:
+  go-build-cache:
+  go-mod-cache:

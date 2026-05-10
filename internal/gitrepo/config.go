@@ -304,6 +304,10 @@ func (l *configLoader) includeIfMatches(condition string) (bool, error) {
 		if target == "" {
 			target = l.worktreeRoot
 		}
+		pattern, err := expandTildeInGitdirPattern(pattern)
+		if err != nil {
+			return false, err
+		}
 		return matchConfigGlob(pattern, target, strings.EqualFold(kind, "gitdir/i")), nil
 	case "onbranch":
 		if l.repo == nil {
@@ -382,30 +386,19 @@ func parseGitBool(value string, boolValue bool) (bool, error) {
 	}
 }
 
-// expandTilde resolves a leading "~/" or bare "~" to the user's home dir, the
-// only tilde form git expands in core.excludesfile.
-func expandTilde(p string) (string, error) {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("resolve home directory: %w", err)
-		}
-		if home == "" {
-			return "", fmt.Errorf("home directory is empty")
-		}
+func expandTildeInGitdirPattern(p string) (string, error) {
+	hadTrailingSlash := strings.HasSuffix(p, "/")
 
-		if p == "~" {
-			return home, nil
-		}
-
-		return filepath.Join(home, p[2:]), nil
+	expanded, err := expandTilde(p)
+	if err != nil {
+		return "", err
 	}
 
-	if strings.HasPrefix(p, "~") {
-		return "", fmt.Errorf("unsupported tilde expansion %q: only ~ and ~/ are supported", p)
+	if hadTrailingSlash && !strings.HasSuffix(filepath.ToSlash(expanded), "/") {
+		expanded += "/"
 	}
 
-	return p, nil
+	return expanded, nil
 }
 
 func matchConfigGlob(pattern, target string, ignoreCase bool) bool {

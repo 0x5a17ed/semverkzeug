@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/format/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -78,6 +80,37 @@ func TestStatus_CoreExcludesFileReplacesDefaultXDGIgnore(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, st, "custom/file")
 	assert.Equal(t, git.Untracked, requireStatus(t, st, "xdgonly/file").Worktree)
+}
+
+func TestStatus_IncludeIfGitdirExpandsHome(t *testing.T) {
+	home := gitfixture.NewHomeFixture(t)
+	gitfixture.IsolateGitConfig(t)
+
+	gitfixture.WriteFile(t, home("gitignore"), "local/\n")
+	gitfixture.WriteFile(t, home("included-config"),
+		"[core]\n\texcludesFile = ~/gitignore\n")
+	gitfixture.WriteFile(t, home(".gitconfig"),
+		"[includeIf \"gitdir:~/git/\"]\n\tpath = ~/included-config\n")
+
+	repoPath := home("git", "repo")
+	repo, err := git.PlainInitWithOptions(repoPath, &git.PlainInitOptions{
+		InitOptions: git.InitOptions{
+			DefaultBranch: plumbing.Main,
+		},
+		ObjectFormat: config.SHA1,
+	})
+	require.NoError(t, err)
+
+	cx, err := gitrepo.NewContextFromRepo(repo)
+	require.NoError(t, err)
+
+	gitfixture.CommitFile(t, cx, "tracked", "tracked\n")
+	gitfixture.WriteRepoFile(t, cx, "local/file", "ignored\n")
+
+	st, err := gitrepo.BuildWorktreeStatus(cx)
+	require.NoError(t, err)
+	assert.NotContains(t, st, "local/file")
+	assert.True(t, st.IsClean(), "status:\n%s", st.String())
 }
 
 func TestStatus_GitignoreOverridesGlobalExclude(t *testing.T) {

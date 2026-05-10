@@ -324,7 +324,8 @@ func (l *configLoader) includeIfMatches(condition string) (bool, error) {
 }
 
 func systemConfigPaths() []string {
-	if os.Getenv("GIT_CONFIG_NOSYSTEM") != "" {
+	b, err := parseGitBoolEnv("GIT_CONFIG_NOSYSTEM", false)
+	if err != nil || b {
 		return nil
 	}
 	if p := os.Getenv("GIT_CONFIG_SYSTEM"); p != "" {
@@ -371,8 +372,8 @@ func defaultExcludesFilePath() (string, error) {
 	return filepath.Join(xdg, "git", "ignore"), nil
 }
 
-func parseGitBool(value string, boolValue bool) (bool, error) {
-	if boolValue {
+func parseGitBool(value string, valueOmitted bool) (bool, error) {
+	if valueOmitted {
 		return true, nil
 	}
 
@@ -439,4 +440,20 @@ func filesystemRoot(fsys billy.Filesystem) string {
 
 func isErrNotExist(err error) bool {
 	return errors.Is(err, iofs.ErrNotExist) || os.IsNotExist(err)
+}
+
+func parseGitBoolEnv(name string, defaultValue bool) (bool, error) {
+	value, ok := os.LookupEnv(name)
+	if !ok {
+		return defaultValue, nil
+	}
+
+	switch strings.ToLower(value) {
+	case "true", "yes", "on", "1":
+		return true, nil
+	case "", "false", "no", "off", "0":
+		return false, nil
+	default:
+		return defaultValue, fmt.Errorf("bad boolean environment value %#q for %s", value, name)
+	}
 }

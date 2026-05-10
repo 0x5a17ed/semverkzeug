@@ -2,6 +2,10 @@ BINARY_NAME := semverkzeug
 
 VERSION = $(shell go run ./cmd/semverkzeug describe)
 
+PREFIX ?= $(HOME)/.local
+DESTDIR ?=
+INSTALL ?= install
+
 CONTAINER_COMPOSE ?= docker compose
 CONTAINER_COMPOSE_FILE ?= docker/compose.yaml
 CONTAINER_TEST_SERVICE ?= test
@@ -22,7 +26,13 @@ SRC := $(shell find . -type f -name '*.go')
 
 dist/$(BINARY_NAME): GOFLAGS = $(GOFLAGS_COMMON) -ldflags "-w -s -X=main.Version=$(VERSION)"
 dist/$(BINARY_NAME): $(SRC) go.mod go.sum
+	mkdir -p $(@D)
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) GOAMD64=v2 go build $(GOFLAGS) -o $@ ./cmd/$(BINARY_NAME)
+
+.PHONY: install
+install: dist/$(BINARY_NAME)
+	$(INSTALL) -d "$(DESTDIR)$(PREFIX)/bin"
+	$(INSTALL) -m 0755 "$<" "$(DESTDIR)$(PREFIX)/bin/$(BINARY_NAME)"
 
 .PHONY: clean
 clean:

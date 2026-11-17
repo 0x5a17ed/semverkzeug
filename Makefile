@@ -9,8 +9,8 @@ INSTALL ?= install
 CONTAINER_COMPOSE ?= docker compose
 CONTAINER_COMPOSE_FILE ?= docker/compose.yaml
 CONTAINER_TEST_SERVICE ?= test
-GO_TEST_BASE_IMAGE ?= docker.io/library/golang:1.26-trixie
-GO_TEST_IMAGE ?= localhost/semverkzeug-test:go1.26-trixie
+GO_TEST_BASE_IMAGE ?= docker.io/library/golang:1.27.4-trixie
+GO_TEST_IMAGE ?= localhost/semverkzeug-test:1.27.4-trixie
 GO_TEST_FLAGS ?= -v ./...
 
 SHELL := bash

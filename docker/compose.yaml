@@ -7,8 +7,8 @@ services:
       context: ".."
       dockerfile: docker/Dockerfile.test
       args:
-        GO_TEST_BASE_IMAGE: "${GO_TEST_BASE_IMAGE:-docker.io/library/golang:1.26-trixie}"
-    image: ${GO_TEST_IMAGE:-localhost/semverkzeug-test:go1.26-trixie}
+        GO_TEST_BASE_IMAGE: "${GO_TEST_BASE_IMAGE:-docker.io/library/golang:1.27.4-trixie}"
+    image: ${GO_TEST_IMAGE:-localhost/semverkzeug-test:go1.27.4-trixie}
     working_dir: /workspace
     entrypoint: ["/bin/sh"]
     command: ["-c", "go test $${GO_TEST_FLAGS}"]

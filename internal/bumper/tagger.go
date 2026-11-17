@@ -26,8 +26,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 
 	"github.com/0x5a17ed/semverkzeug/internal/gitrepo"
 	"github.com/0x5a17ed/semverkzeug/internal/uiprint"
@@ -38,81 +40,160 @@ func hasGitCommand() bool {
 	return err == nil
 }
 
-func CreateTag(
+// TagOptions adjust the tag that a bump plans.
+type TagOptions struct {
+	// Message replaces the generated tag message when it is not empty.
+	Message string
+
+	// Expect, when set, is the version that the bump must yield.  A
+	// bump that yields any other version fails with
+	// ErrUnexpectedVersion, so a caller can catch a disagreement with
+	// its own record of versions before anything changes.
+	Expect *semver.Version
+}
+
+// TagPlan describes the annotated tag that a bump creates.
+type TagPlan struct {
+	// Label is the tag name, such as "v1.2.3" or "mod/v1.2.3".
+	Label string
+
+	// Message is the tag message.
+	Message string
+
+	// Target describes the tagged commit for output: its unique
+	// abbreviated hash, followed by its subject when it has one.
+	Target string
+}
+
+// defaultMessage words the tag message that a bump creates when the
+// caller gives none.
+func defaultMessage(guide *gitrepo.Guide, current gitrepo.VersionSpec, label string) string {
+	if len(guide.Tags) == 0 {
+		// No tags were used to find the previous version;
+		// this means this is the first version to be tagged.
+		return fmt.Sprintf("first version %s", label)
+	}
+	return fmt.Sprintf("bump version %s -> %s", current.String(), label)
+}
+
+// describeTarget words the commit a tag points at as its unique
+// abbreviated hash, followed by its subject when it has one.
+func describeTarget(cx *gitrepo.Context, commit *object.Commit) (string, error) {
+	target, err := gitrepo.FindUniqueCommitHashAbbreviation(cx, commit)
+	if err != nil {
+		return "", fmt.Errorf("abbreviate commit hash: %w", err)
+	}
+
+	subject, _, _ := strings.Cut(commit.Message, "\n")
+	if subject = strings.TrimSpace(subject); subject != "" {
+		target = fmt.Sprintf("%s (%s)", target, subject)
+	}
+	return target, nil
+}
+
+// PlanTag verifies the repository and works out the annotated tag that
+// bumping part of the latest version creates at ref.  It creates
+// nothing, so it also serves a dry run.
+func PlanTag(
 	cx *gitrepo.Context,
 	ref *plumbing.Reference,
 	part Part,
 	scope gitrepo.Scope,
-) (*plumbing.Reference, error) {
+	opts TagOptions,
+) (TagPlan, error) {
 	if err := VerifyRepo(cx, ref); err != nil {
-		return nil, err
+		return TagPlan{}, err
 	}
 
 	commit, err := cx.Repository().CommitObject(ref.Hash())
 	if err != nil {
-		return nil, fmt.Errorf("resolve commit object: %w", err)
+		return TagPlan{}, fmt.Errorf("resolve commit object: %w", err)
 	}
 
 	guide, err := gitrepo.BuildGuide(cx, ref, scope)
 	if err != nil {
-		return nil, fmt.Errorf("build guide: %w", err)
+		return TagPlan{}, fmt.Errorf("build guide: %w", err)
 	}
 
 	currSpec := gitrepo.LatestSpec(guide)
-	nextLabel := currSpec.WithVersion(Bump(currSpec.Version, part)).String()
+	nextVersion := Bump(currSpec.Version, part)
+	nextLabel := currSpec.WithVersion(nextVersion).String()
+	if opts.Expect != nil && !nextVersion.Equal(opts.Expect) {
+		return TagPlan{}, fmt.Errorf(
+			"%w: bumping %s yields %s, not %s",
+			ErrUnexpectedVersion, currSpec.String(), nextLabel, opts.Expect.String(),
+		)
+	}
 
 	// Double-check the tag label is not already in use.
 	switch _, err := cx.Repository().Tag(nextLabel); {
 	case errors.Is(err, git.ErrTagNotFound):
 		// Fall through.
 	case err != nil:
-		return nil, fmt.Errorf("resolve tag %q: %w", nextLabel, err)
+		return TagPlan{}, fmt.Errorf("resolve tag %q: %w", nextLabel, err)
 	default:
-		return nil, fmt.Errorf("tag %q already exists", nextLabel)
+		return TagPlan{}, fmt.Errorf("tag %q already exists", nextLabel)
 	}
 
-	uiprint.Step("Creating annotated tag [%s]", nextLabel)
-
-	var message string
-	if len(guide.Tags) == 0 {
-		// No tags were used to find the previous version;
-		// this means this is the first version to be tagged.
-		message = fmt.Sprintf("first version %s", nextLabel)
-
-	} else {
-		message = fmt.Sprintf("bump version %s -> %s", currSpec.String(), nextLabel)
+	message := opts.Message
+	if message == "" {
+		message = defaultMessage(guide, currSpec, nextLabel)
 	}
 
-	target, err := gitrepo.FindUniqueCommitHashAbbreviation(cx, commit)
+	target, err := describeTarget(cx, commit)
 	if err != nil {
-		return nil, fmt.Errorf("abbreviate commit hash: %w", err)
+		return TagPlan{}, err
 	}
-	subject, _, _ := strings.Cut(commit.Message, "\n")
-	if subject = strings.TrimSpace(subject); subject != "" {
-		target = fmt.Sprintf("%s (%s)", target, subject)
-	}
-	uiprint.Substep("Target: %s", target)
+
+	return TagPlan{
+		Label:   nextLabel,
+		Message: message,
+		Target:  target,
+	}, nil
+}
+
+// ApplyTag creates the annotated tag that plan describes at ref.
+func ApplyTag(
+	cx *gitrepo.Context,
+	ref *plumbing.Reference,
+	plan TagPlan,
+) (*plumbing.Reference, error) {
+	uiprint.Step("Creating annotated tag [%s]", plan.Label)
+	uiprint.Substep("Target: %s", plan.Target)
 
 	var tagRef *plumbing.Reference
+	var err error
 
 	// Check if the repository is backed by a filesystem storage.
 	if p, hasStorage := cx.DotGitPath(); hasStorage && hasGitCommand() {
 		// Use the native git implementation to ensure consistency with other git commands.
-		tagRef, err = createTagNative(cx, ref, nextLabel, message, p)
-		if err != nil {
-			return nil, err
-		}
-
+		tagRef, err = createTagNative(cx, ref, plan.Label, plan.Message, p)
 	} else {
 		// Fall back to tag creation via internal implementation.
-		tagRef, err = createTagInternal(cx, ref, nextLabel, message)
-		if err != nil {
-			return nil, err
-		}
+		tagRef, err = createTagInternal(cx, ref, plan.Label, plan.Message)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	uiprint.Step("Created tag [%s]", tagRef.Name().Short())
 	return tagRef, nil
+}
+
+// CreateTag bumps part of the latest version and creates the annotated
+// tag for it at ref.
+func CreateTag(
+	cx *gitrepo.Context,
+	ref *plumbing.Reference,
+	part Part,
+	scope gitrepo.Scope,
+	opts TagOptions,
+) (*plumbing.Reference, error) {
+	plan, err := PlanTag(cx, ref, part, scope, opts)
+	if err != nil {
+		return nil, err
+	}
+	return ApplyTag(cx, ref, plan)
 }
 
 // createTagInternal creates a tag using the internal implementation.
@@ -147,7 +228,10 @@ func createTagNative(
 	}
 
 	// Use the native git implementation to ensure consistency with other git commands.
-	gitArgs := []string{"tag", "-a", "-F", "-", label, ref.Hash().String()}
+	// Whitespace cleanup keeps lines that start with "#", such as
+	// Markdown headings in release notes, which git otherwise strips
+	// as comments.
+	gitArgs := []string{"tag", "-a", "--cleanup=whitespace", "-F", "-", label, ref.Hash().String()}
 
 	uiprint.Substep("Running: git %s", strings.Join(gitArgs, " "))
 

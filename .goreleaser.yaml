@@ -80,6 +80,13 @@ docker_signs:
       - ${artifact}@${digest}
     output: true
 
+changelog:
+  filters:
+    exclude:
+      # A merge commit only marks a feature increment. The changelog
+      # already lists each commit that the merge brings in.
+      - "^Merge branch"
+
 release:
   draft: false
   prerelease: auto

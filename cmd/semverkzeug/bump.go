@@ -17,11 +17,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"os"
-	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
 
@@ -41,36 +38,12 @@ type bumpCmd struct {
 	Part     string         `arg:"" enum:"major,minor,patch" help:"part of the version to bump (major, minor, patch)"`
 	ScopeArg *gitrepo.Scope `arg:"true" name:"scope" optional:"" help:"tag scope to bump (defaults to scope derived from --repo)"`
 
-	MessageFile string `name:"message-file" short:"F" placeholder:"PATH" help:"read the tag message from PATH instead of generating it (- reads standard input)"`
-	Expect      string `name:"expect" placeholder:"VERSION" help:"fail unless the bump yields VERSION"`
-	DryRun      bool   `name:"dry-run" help:"check everything and print the tag without creating it"`
+	MessageFile MessageSource `name:"message-file" short:"F" placeholder:"PATH" help:"read the tag message from PATH instead of generating it (- reads standard input)"`
+	Expect      string        `name:"expect" placeholder:"VERSION" help:"fail unless the bump yields VERSION"`
+	DryRun      bool          `name:"dry-run" help:"check everything and print the tag without creating it"`
 }
 
 func (c *bumpCmd) Scope() *gitrepo.Scope { return c.ScopeArg }
-
-// readMessage reads the tag message from path, or from standard input
-// when path is "-".  An empty path means a generated message.
-func readMessage(path string) (string, error) {
-	var content []byte
-	var err error
-	switch path {
-	case "":
-		return "", nil
-	case "-":
-		content, err = io.ReadAll(os.Stdin)
-	default:
-		content, err = os.ReadFile(path)
-	}
-	if err != nil {
-		return "", fmt.Errorf("read message file: %w", err)
-	}
-
-	message := string(content)
-	if strings.TrimSpace(message) == "" {
-		return "", errors.New("read message file: message is empty")
-	}
-	return message, nil
-}
 
 // parseExpect parses the version given to --expect.  It accepts the
 // forms that tags use, so "1.2.3", "v1.2.3" and "mod/v1.2.3" all work.
@@ -86,7 +59,7 @@ func parseExpect(raw string) (*gitrepo.VersionSpec, error) {
 }
 
 func (c *bumpCmd) tagOptions() (bumper.TagOptions, error) {
-	message, err := readMessage(c.MessageFile)
+	message, err := c.MessageFile.Read(os.Stdin)
 	if err != nil {
 		return bumper.TagOptions{}, err
 	}

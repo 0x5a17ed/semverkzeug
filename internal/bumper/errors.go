@@ -23,4 +23,8 @@ import (
 var (
 	ErrRepositoryIsEmpty = errors.New("repository is empty")
 	ErrRepositoryIsDirty = errors.New("repository contains uncommitted changes")
+
+	// ErrUnexpectedVersion reports a bump that yields another version
+	// than the caller expected.
+	ErrUnexpectedVersion = errors.New("unexpected version")
 )

@@ -52,10 +52,29 @@ foo@bar:~/git/myproject $ semverkzeug bump patch
 ```
 
 
+### Checking a bump before tagging
+
+To see the tag that a bump would create without creating it, pass `--dry-run`. It runs every check, including the check for a clean working tree. To make sure the bump yields the version you expect, pass `--expect`, which also accepts the forms `v1.2.3` and `mod/v1.2.3`:
+
+```console
+foo@bar:~/git/myproject $ semverkzeug bump minor --expect 0.2.0 --dry-run
+==> Would create annotated tag [v0.2.0]
+ -> Target: e6f3fa7 (release 0.2.0)
+```
+
+When the bump yields another version, the command fails and creates nothing. A tool that writes its own record of versions, such as a changelog, can use this to catch a disagreement before it commits.
+
+### Using your own tag message
+
+By default, the tag message names the bump, such as `bump version v0.1.0 -> v0.2.0`. To use your own message instead, such as release notes, pass `--message-file PATH`, or `--message-file -` to read it from standard input. Lines that start with `#`, such as Markdown headings, stay in the message.
+
+
 ## Features
 
 - automatically derives the next development version from git tag history and working-tree state
 - bumps the released version and creates an annotated, optionally signed git tag
+- checks a bump against an expected version, and previews it without creating the tag
+- takes the tag message from a file, such as release notes
 
 
 ## ☝️ Is it any good?

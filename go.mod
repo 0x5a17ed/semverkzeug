@@ -2,6 +2,8 @@ module github.com/0x5a17ed/semverkzeug
 
 go 1.27.0
 
+toolchain go1.27.4
+
 require (
 	github.com/0x5a17ed/kong-help v0.4.0
 	github.com/0x5a17ed/xit v0.3.0
